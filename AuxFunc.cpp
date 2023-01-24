@@ -295,3 +295,84 @@ bool GetFileBuf(const wchar_t* FileName, BYTE** outFile, size_t* OutBufSize)
 
     return bSuccess;
 }
+
+int min_3s(int x, int y, int z)
+{
+    if (x < y)
+        return x < z ? x : z;
+    else
+        return y < z ? y : z;
+}
+
+int EditCmp_func(wchar_t t1, wchar_t t2)
+{
+    int retValue = 0;
+    if (t1 == t2)
+    {
+        retValue = 0;
+    }
+    else if (t1 == L'*' || t2 == L'*')
+    {
+        retValue = 0;
+    }
+    else if (t1 == L'\\' && t2 == L'/')
+    {
+        retValue = 0;
+    }
+    else if (t2 == L'\\' && t1 == L'/')
+    {
+        retValue = 0;
+    }
+    else
+    {
+        retValue = 1;
+    }
+
+    return retValue;
+}
+
+int EditDistance(const wchar_t* s1, int m, const wchar_t* s2, int n, wtCmp_func CmpFunc)
+{
+    int** dp;
+    int res, i, j;
+
+    dp = new int* [size_t(m) + 1];
+    if (dp == NULL)
+        return -1;
+
+    for (i = 0; i < m + 1; i++)
+    {
+        dp[i] = new int[size_t(n) + 1];
+        if (dp[i] == NULL)
+            return -1;
+    }
+
+    //caculate
+    for (i = 0; i < m + 1; i++)
+    {
+        for (j = 0; j < n + 1; j++)
+        {
+            if (i == 0)
+                dp[i][j] = j;
+            else if (j == 0)
+                dp[i][j] = i;
+            else
+            {
+                dp[i][j] = (*CmpFunc)(s1[i - 1], s2[j - 1]) + min_3s(dp[i - 1][j],
+                    dp[i][j - 1],
+                    dp[i - 1][j - 1]);
+            }
+        }
+    }
+
+    res = dp[m][n];
+
+    for (i = 0; i < m + 1; i++)
+    {
+        delete[] dp[i];
+    }
+
+    delete[] dp;
+
+    return res;
+}

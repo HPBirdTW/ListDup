@@ -515,18 +515,13 @@ public:
     wstring     exptWStr;
     bool operator() (wstring &a, wstring &b)
     {
-        if (exptWStr.size())
-        {
-            if (a.find(exptWStr.c_str()) != std::string::npos)
-            {
-                return true;
-            }
-            if (b.find(exptWStr.c_str()) != std::string::npos)
-            {
-                return false;
-            }
-        }
-        return a < b;
+        int aEdit;
+        int bEdit;
+
+        aEdit = EditDistance(exptWStr.c_str(), (int)exptWStr.length(), a.c_str(), (int)a.length());
+        bEdit = EditDistance(exptWStr.c_str(), (int)exptWStr.length(), b.c_str(), (int)b.length());
+
+        return aEdit < bEdit;
     }
 };
 
