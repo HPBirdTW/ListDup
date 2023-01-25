@@ -27,6 +27,63 @@ struct ListClearParam
     ListClearParam() : MaxThread(0), DestDir(), SrcDir(), enumFileOp(0), cpyDir() {}
 };
 
+class EditSortStr
+{
+public:
+    wstring             str;
+    int                 EditDist;
+    const static int    EDIT_NULL = -1;
+    EditSortStr(wstring _str) :str(_str), EditDist(EDIT_NULL) {}
+    EditSortStr() :str(), EditDist(EDIT_NULL) {}
+    EditSortStr(const EditSortStr& obj) :str(obj.str), EditDist(obj.EditDist) {}
+    EditSortStr& operator=(const wstring& obj)
+    {
+        str = obj;
+        EditDist = EDIT_NULL;
+        return *this;
+    }
+    EditSortStr& operator=(const EditSortStr& obj)
+    {
+        str = obj.str;
+        EditDist = obj.EditDist;
+        return *this;
+    }
+};
+
+class csSortByWSDir
+{
+public:
+    wstring     exptWStr;
+    wstring     cutOffDir;
+    bool operator() (EditSortStr& a, EditSortStr& b)
+    {
+        wstring aCutOffStr;
+        wstring bCutOffStr;
+
+        if (a.EditDist == EditSortStr::EDIT_NULL)
+        {
+            aCutOffStr = a.str;
+            if (cutOffDir.size())
+            {
+                aCutOffStr = aCutOffStr.substr(aCutOffStr.find(cutOffDir.c_str()) + cutOffDir.size());
+            }
+            a.EditDist = EditDistance(exptWStr.c_str(), (int)exptWStr.length(), aCutOffStr.c_str(), (int)aCutOffStr.length());
+        }
+
+        if (b.EditDist == EditSortStr::EDIT_NULL)
+        {
+            bCutOffStr = b.str;
+            if (cutOffDir.size())
+            {
+                bCutOffStr = bCutOffStr.substr(bCutOffStr.find(cutOffDir.c_str()) + cutOffDir.size());
+            }
+            b.EditDist = EditDistance(exptWStr.c_str(), (int)exptWStr.length(), bCutOffStr.c_str(), (int)bCutOffStr.length());
+        }
+
+        return a.EditDist < b.EditDist;
+    }
+};
+
 void PrintBuf(UINT8* Buf, int sizeBuf)
 {
     int i;
@@ -54,10 +111,8 @@ void SPrint(UINT8* strBuf, int sizeBuf, int suffixIndex)
     WSPrint(L" [%d]\n", suffixIndex);
 }
 
-
 std::mutex g_mutex;
 std::mutex g_mutex_thread;
-
 int SuffixVldBuild(int cpuIdx,size_t MaxCpuThread, std::vector<wstring> *FileList)
 {
 
@@ -509,39 +564,12 @@ size_t RemoveEmptyFolder(const wchar_t* destFolder)
     return szRetVal;
 }
 
-class csSortByWSDir
-{
-public:
-    wstring     exptWStr;
-    wstring     cutOffDir;
-    bool operator() (wstring &a, wstring &b)
-    {
-        int     aEdit;
-        int     bEdit;
-        wstring aCutOffStr;
-        wstring bCutOffStr;
-
-        aCutOffStr = a;
-        bCutOffStr = b;
-
-        if (cutOffDir.size())
-        {
-            aCutOffStr = aCutOffStr.substr(aCutOffStr.find(cutOffDir.c_str()) + cutOffDir.size());
-            bCutOffStr = bCutOffStr.substr(bCutOffStr.find(cutOffDir.c_str()) + cutOffDir.size());
-        }
-
-        aEdit = EditDistance(exptWStr.c_str(), (int)exptWStr.length(), aCutOffStr.c_str(), (int)aCutOffStr.length());
-        bEdit = EditDistance(exptWStr.c_str(), (int)exptWStr.length(), bCutOffStr.c_str(), (int)bCutOffStr.length());
-
-        return aEdit < bEdit;
-    }
-};
-
 size_t ProcFileOp(ListClearParam* lcParam)
 {
-    std::vector<wstring>		DestListFile;
-    std::vector<wstring>		SrcListFile;
-    std::vector<wstring>		FindListFile;
+    std::vector<wstring>        DestListFile;
+    std::vector<wstring>        SrcListFile;
+    std::vector<wstring>        FindListFile;
+    std::vector<EditSortStr>    SortListFile;
     std::wstring                tmpWStr;
     std::wstring                ShortFileWStr;
     std::wstring                tmp2WStr;
@@ -655,7 +683,7 @@ size_t ProcFileOp(ListClearParam* lcParam)
             SearchResult.clear();
             suffixTree.findIdxBuf((UINT8*)tmpWStr.c_str(), (int)tmpWStr.size() * sizeof(wchar_t), &SearchResult);
 
-            FindListFile.clear();
+            SortListFile.clear();
             for (szIdx2 = 0; szIdx2 < SearchResult.size(); ++szIdx2)
             {
                 tmpVal = SearchResult[szIdx2];
@@ -679,7 +707,7 @@ size_t ProcFileOp(ListClearParam* lcParam)
                             WSPrint(L"    [Find_Same_File] - %s\n");
                             break;
                         }
-                        FindListFile.push_back(SrcListFile[szTmpVal]);
+                        SortListFile.push_back(SrcListFile[szTmpVal]);
                         break;
                     }
                 }
@@ -688,7 +716,13 @@ size_t ProcFileOp(ListClearParam* lcParam)
             tmpWStr = tmpWStr.substr(tmpWStr.find(lcParam->DestDir.c_str()) + lcParam->DestDir.size());
             SortByWSDir.exptWStr = tmpWStr;
             SortByWSDir.cutOffDir = lcParam->SrcDir.c_str();
-            sort(FindListFile.begin(), FindListFile.end(), SortByWSDir);
+            sort(SortListFile.begin(), SortListFile.end(), SortByWSDir);
+
+            FindListFile.clear();
+            for (szIdx2 = 0; szIdx2 < SortListFile.size(); ++szIdx2)
+            {
+                FindListFile.push_back(SortListFile[szIdx2].str);
+            }
 
             if (FindListFile.size() != SearchResult.size())
             {
@@ -1026,7 +1060,7 @@ int wmain(int argc, wchar_t* argv[], wchar_t* envp[])
 
         if (ExeAct == ParamAct::None)
         {
-            WTmpStr =  L" ListDup.exe <parameters>          VER(1.05)\n";
+            WTmpStr =  L" ListDup.exe <parameters>          VER(1.06)\n";
             WTmpStr += L"  -d   <Directory>     : Set (Dest) Directory\n";
             WTmpStr += L"  -src <Directory>     : Set (Src) Directory\n";
             WTmpStr += L"  -listClear           : Proc ListClear Action\n";
