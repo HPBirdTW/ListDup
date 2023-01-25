@@ -513,13 +513,25 @@ class csSortByWSDir
 {
 public:
     wstring     exptWStr;
+    wstring     cutOffDir;
     bool operator() (wstring &a, wstring &b)
     {
-        int aEdit;
-        int bEdit;
+        int     aEdit;
+        int     bEdit;
+        wstring aCutOffStr;
+        wstring bCutOffStr;
 
-        aEdit = EditDistance(exptWStr.c_str(), (int)exptWStr.length(), a.c_str(), (int)a.length());
-        bEdit = EditDistance(exptWStr.c_str(), (int)exptWStr.length(), b.c_str(), (int)b.length());
+        aCutOffStr = a;
+        bCutOffStr = b;
+
+        if (cutOffDir.size())
+        {
+            aCutOffStr = aCutOffStr.substr(aCutOffStr.find(cutOffDir.c_str()) + cutOffDir.size());
+            bCutOffStr = bCutOffStr.substr(bCutOffStr.find(cutOffDir.c_str()) + cutOffDir.size());
+        }
+
+        aEdit = EditDistance(exptWStr.c_str(), (int)exptWStr.length(), aCutOffStr.c_str(), (int)aCutOffStr.length());
+        bEdit = EditDistance(exptWStr.c_str(), (int)exptWStr.length(), bCutOffStr.c_str(), (int)bCutOffStr.length());
 
         return aEdit < bEdit;
     }
@@ -675,6 +687,7 @@ size_t ProcFileOp(ListClearParam* lcParam)
             tmpWStr = DestListFile[szIdx];
             tmpWStr = tmpWStr.substr(tmpWStr.find(lcParam->DestDir.c_str()) + lcParam->DestDir.size());
             SortByWSDir.exptWStr = tmpWStr;
+            SortByWSDir.cutOffDir = lcParam->SrcDir.c_str();
             sort(FindListFile.begin(), FindListFile.end(), SortByWSDir);
 
             if (FindListFile.size() != SearchResult.size())
