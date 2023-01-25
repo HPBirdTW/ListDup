@@ -39,6 +39,7 @@ public:
 	int outFileInit(const wchar_t* outFileName);
 	int wsPrint(wchar_t const* const _Format, ...);
 	bool EnConOutSilent();
+	bool DisConOutSilent();
 	bool EnWaitLongFunc();
 	bool DisWaitLongFunc();
 	~CLS_PRINT();

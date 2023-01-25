@@ -46,6 +46,14 @@ bool CLS_PRINT::EnConOutSilent()
     return true;
 }
 
+bool CLS_PRINT::DisConOutSilent()
+{
+    Mutx.lock();
+    bConOutDisp = true;
+    Mutx.unlock();
+    return true;
+}
+
 bool CLS_PRINT::EnWaitLongFunc()
 {
     Mutx.lock();

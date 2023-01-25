@@ -17,6 +17,11 @@ using namespace std;
 
 #define COMPARE_THREAD  1
 
+enum FileOpActEmnu {
+    None = 0x00, FileCmp = 0x01, FileCmpDel = 0x02, RemoveEmptyDir = 0x04,
+    FileDiffCpy = 0x08, FileListAllRst = 0x10, ChkRefDirMatch = 0x20, SilentMode=0x40,
+};
+
 struct ListClearParam
 {
     std::wstring    DestDir;
@@ -351,9 +356,6 @@ size_t SystemDelEmptyDir(const wchar_t* Dest)
     return retVal;
 }
 
-enum FileOpActEmnu { None = 0x00, FileCmp = 0x01, FileCmpDel = 0x02, RemoveEmptyDir = 0x04,
-    FileDiffCpy=0x08, FileListAllRst=0x10, ChkRefDirMatch=0x20
-};
 struct FileOpActExtParam
 {
     bool*   FileDeleted;
@@ -673,9 +675,23 @@ size_t ProcFileOp(ListClearParam* lcParam)
         fileOpExtParam.ReadDestFileFailed = &bSkipFile;
         fileOpExtParam.ReadSrcFileFailed = &bSkipFile;
 
+        if (lcParam->enumFileOp & FileOpActEmnu::SilentMode)
+        {
+            gWsPrint.EnConOutSilent();
+        }
+
         for (szIdx = 0; szIdx < DestListFile.size(); ++szIdx)
         {
+            if (lcParam->enumFileOp & FileOpActEmnu::SilentMode)
+            {
+                gWsPrint.DisConOutSilent();
+            }
             WSPrint(L"\n[%s]\n", DestListFile[szIdx].c_str());
+            if (lcParam->enumFileOp & FileOpActEmnu::SilentMode)
+            {
+                gWsPrint.EnConOutSilent();
+            }
+
             ShortFileWStr = DestListFile[szIdx];
             ShortFileWStr = ShortFileWStr.substr(ShortFileWStr.find_last_of(L"\\/") + 1);
 
@@ -733,15 +749,9 @@ size_t ProcFileOp(ListClearParam* lcParam)
             if ((lcParam->enumFileOp & FileOpActEmnu::ChkRefDirMatch) && FindListFile.size())
             {
                 tmpWStr = FindListFile[0];
-                tmp2WStr = DestListFile[szIdx];
-                tmp2WStr = tmp2WStr.substr(tmp2WStr.find(lcParam->DestDir) + lcParam->DestDir.size());
-                if (std::string::npos == tmpWStr.find(tmp2WStr.c_str()))
+                FindListFile.clear();
+                if (SortListFile[0].EditDist == 0)
                 {
-                    FindListFile.clear();
-                }
-                else
-                {
-                    FindListFile.clear();
                     FindListFile.push_back(tmpWStr);
                 }
             }
@@ -944,6 +954,7 @@ int wmain(int argc, wchar_t* argv[], wchar_t* envp[])
     wstring         CopyDest;
     ListClearParam  lcParam;
     char*           prev_loc = NULL;
+    size_t          enumExtFileOp = FileOpActEmnu::None;
 
     // Get the current deautlt local name.
     // Sets the locale to the ANSI code page obtained from the operating system.
@@ -958,7 +969,7 @@ int wmain(int argc, wchar_t* argv[], wchar_t* envp[])
 
         if (0 == WTmpStr.compare(L"-silent"))
         {
-            gWsPrint.EnConOutSilent();
+            enumExtFileOp |= FileOpActEmnu::SilentMode;
             continue;
         }
 
@@ -1039,6 +1050,7 @@ int wmain(int argc, wchar_t* argv[], wchar_t* envp[])
             lcParam.cpyDir = CopyDest;
             lcParam.MaxThread = 0;
             lcParam.enumFileOp = FileOpActEmnu::FileCmp;
+            lcParam.enumFileOp |= enumExtFileOp;
             if (ExeAct == ParamAct::ProcListClear)
             {
                 lcParam.enumFileOp |= (FileOpActEmnu::FileCmpDel | FileOpActEmnu::RemoveEmptyDir);
@@ -1060,7 +1072,7 @@ int wmain(int argc, wchar_t* argv[], wchar_t* envp[])
 
         if (ExeAct == ParamAct::None)
         {
-            WTmpStr =  L" ListDup.exe <parameters>          VER(1.06)\n";
+            WTmpStr =  L" ListDup.exe <parameters>          VER(1.07)\n";
             WTmpStr += L"  -d   <Directory>     : Set (Dest) Directory\n";
             WTmpStr += L"  -src <Directory>     : Set (Src) Directory\n";
             WTmpStr += L"  -listClear           : Proc ListClear Action\n";
