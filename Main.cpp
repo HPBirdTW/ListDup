@@ -1026,7 +1026,7 @@ int wmain(int argc, wchar_t* argv[], wchar_t* envp[])
 
         if (ExeAct == ParamAct::None)
         {
-            WTmpStr =  L" ListDup.exe <parameters>          VER(1.04)\n";
+            WTmpStr =  L" ListDup.exe <parameters>          VER(1.05)\n";
             WTmpStr += L"  -d   <Directory>     : Set (Dest) Directory\n";
             WTmpStr += L"  -src <Directory>     : Set (Src) Directory\n";
             WTmpStr += L"  -listClear           : Proc ListClear Action\n";
