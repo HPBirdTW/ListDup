@@ -16,6 +16,9 @@ extern CLS_PRINT	gWsPrint;
 
 int ListAllFileByAttribue(const wchar_t* CurDir, vector<wstring>* RetDispFileList, DWORD OrFileAttrMask, DWORD ExcludeFileAttrMask);
 bool GetFileBuf(const wchar_t* FileName, BYTE** outFile, size_t* outBufSize);
+size_t SystemDelEmptyDir(const wchar_t* Dest);
+size_t SystemCpyFile(const wchar_t* Dest, const wchar_t* Src);
+size_t SystemDelFile(const wchar_t* Dest);
 
 typedef int (*wtCmp_func)(wchar_t, wchar_t);
 int EditCmp_func(wchar_t t1, wchar_t t2);

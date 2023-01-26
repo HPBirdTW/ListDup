@@ -168,7 +168,7 @@ int ListAllFileByAttribue(const wchar_t* _CurDir, vector<wstring>* RetDispFileLi
     CurDirWStr = _CurDir;
     curDirListStack.push_back(CurDirWStr);
 
-    tmpStrBuf = new wchar_t[MAX_PATH*2];
+    tmpStrBuf = new wchar_t[MAX_PATH*4];
 
     do
     {
@@ -179,7 +179,7 @@ int ListAllFileByAttribue(const wchar_t* _CurDir, vector<wstring>* RetDispFileLi
         lstrcpy(tmpStrBuf, CurDirWStr.c_str());
         lstrcat(tmpStrBuf, L"\\*");
 
-        hFile = FindFirstFileW(tmpStrBuf, &WinFileData);
+        hFile = FindFirstFile(tmpStrBuf, &WinFileData);
         if (INVALID_HANDLE_VALUE == hFile)
         {
             WSPrint(L"Not find file in %s\n", tmpStrBuf);
@@ -302,6 +302,139 @@ bool GetFileBuf(const wchar_t* FileName, BYTE** outFile, size_t* OutBufSize)
     }
 
     return bSuccess;
+}
+
+size_t SystemDelFile(const wchar_t* Dest)
+{
+    size_t              retVal = 0;
+    wchar_t* TempStrBuf = NULL;
+
+    TempStrBuf = new wchar_t[MAX_PATH * 4];
+    /*
+     * Use the follow, will never see the error message "ECHO F | XCOPY \"%s\" \"%s\" /Y /Q /S /E /R >nul 2>nul"
+     */
+#if 0
+    const wchar_t       CnCmdLine[] = L"DEL \"%s\" /F /Q >nul";
+    //wchar_t             TempStrBuf[MAX_PATH * 2 + (sizeof(CnCmdLine) / sizeof(CnCmdLine[0]))];	// Consider to have 2 file path.
+
+    wsprintf(TempStrBuf, CnCmdLine, Dest);
+    _wsystem(TempStrBuf);
+#else
+    {
+        bool        bDelFile = false;
+        DWORD       FileAttribute;
+        const DWORD FILE_REMV_ATTR = FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_SYSTEM;
+
+        FileAttribute = GetFileAttributes(Dest);
+        if (FileAttribute & FILE_REMV_ATTR)
+        {
+            SetFileAttributes(Dest, FileAttribute & ~FILE_REMV_ATTR);
+        }
+
+        bDelFile = DeleteFile(Dest);
+        if (false == bDelFile)
+        {
+            WSPrint(L"Delete File failed: %s", Dest);
+            retVal = -1;
+        }
+    }
+#endif
+    delete[] TempStrBuf;
+    return retVal;
+}
+
+
+bool CreateDir(wstring sPath)
+{
+    size_t      pos = 0;
+    DWORD       FileAttribute;
+    const DWORD FILE_REMV_ATTR = FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_SYSTEM;
+    bool        bSuccess = true;
+    wstring     tmpWStr;
+
+    sPath += L"\\";
+    while (std::string::npos != (pos = sPath.find_first_of(L"\\/", pos + 1)))
+    {
+        tmpWStr = sPath.substr(0, pos).c_str();
+        FileAttribute = GetFileAttributes(tmpWStr.c_str());
+        if (INVALID_FILE_ATTRIBUTES == FileAttribute)
+        {
+            bSuccess = CreateDirectory(tmpWStr.c_str(), NULL);
+            if (false == bSuccess)
+            {
+                WSPrint(L"    CreateDirectoryW (%s) - %s\n", tmpWStr.c_str(), GetSysLastErrString().c_str());
+            }
+        }
+        else
+        {
+            //WSPrint(L"Exist: %s\n", tmpWStr.c_str());
+        }
+    }
+
+    return bSuccess;
+}
+
+size_t SystemCpyFile(const wchar_t* Dest, const wchar_t* Src)
+{
+    size_t      retVal = 0;
+    wchar_t* tmpStrBuf = NULL;
+
+    tmpStrBuf = new wchar_t[MAX_PATH * 8 + 0x100]; // Consider to have 2 file path + CmdLine cout.
+#if 0
+    /*
+     * Use the follow, will never see the error message "ECHO F | XCOPY \"%s\" \"%s\" /Y /Q /S /E /R >nul 2>nul"
+     */
+    const wchar_t       CnCmdLine[] = L"ECHO F | XCOPY \"%s\" \"%s\" /Y /Q /V /R >nul";
+
+    wsprintf(tmpStrBuf, CnCmdLine, Src, Dest);
+    //WSPrint(tmpStrBuf, L"XCOPY %s %s* /Y /S /F /Q", Src, Dest);
+    _wsystem(tmpStrBuf);
+#else
+    bool        bSuccess;
+    wstring     tmpWStr;
+
+    tmpWStr = Dest;
+    tmpWStr = tmpWStr.substr(0, tmpWStr.find_last_of(L"\\/"));
+    CreateDir(tmpWStr);
+    bSuccess = CopyFile(Src, Dest, false);
+    if (false == bSuccess)
+    {
+        WSPrint(L"    Fail on Copy - %s\n", GetSysLastErrString().c_str());
+    }
+    retVal = (bSuccess == true ? 0 : -1);
+#endif
+    delete[] tmpStrBuf;
+    return retVal;
+}
+
+size_t SystemDelEmptyDir(const wchar_t* Dest)
+{
+    size_t      retVal = 0;
+    wchar_t* TempStrBuf = NULL;
+    TempStrBuf = new wchar_t[MAX_PATH * 4];
+#if 0
+    const wchar_t       CnCmdLine[] = L"ECHO F | RMDIR /Q \"%s\" >nul";
+    //wchar_t             TempStrBuf[MAX_PATH * 2 + (sizeof(CnCmdLine) / sizeof(CnCmdLine[0]))];	// Consider to have 2 file path.
+
+    wsprintf(TempStrBuf, CnCmdLine, Dest);
+    //	wsprintf(TempStrBuf, L"XCOPY %s %s* /Y /S /F /Q", Source, Dest);
+    _wsystem(TempStrBuf);
+#else
+    bool        bSuccess;
+    DWORD       FileAttribute;
+    const DWORD FILE_REMV_ATTR = FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_SYSTEM;
+
+    FileAttribute = GetFileAttributes(Dest);
+    if (FileAttribute & FILE_REMV_ATTR)
+    {
+        SetFileAttributes(Dest, FileAttribute & ~FILE_REMV_ATTR);
+    }
+
+    bSuccess = RemoveDirectory(Dest);
+    retVal = bSuccess == true ? 0 : -1;
+#endif
+    delete[] TempStrBuf;
+    return retVal;
 }
 
 int min_3s(int x, int y, int z)

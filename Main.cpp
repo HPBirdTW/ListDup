@@ -229,133 +229,6 @@ int SuffixTestProc(const wchar_t* OutDir)
     return RetValue;
 }
 
-size_t SystemDelFile(const wchar_t* Dest)
-{
-    size_t              retVal = 0;
-    /*
-     * Use the follow, will never see the error message "ECHO F | XCOPY \"%s\" \"%s\" /Y /Q /S /E /R >nul 2>nul"
-     */
-#if 0
-    const wchar_t       CnCmdLine[] = L"DEL \"%s\" /F /Q >nul";
-    wchar_t             TempStrBuf[MAX_PATH * 2 + (sizeof(CnCmdLine) / sizeof(CnCmdLine[0]))];	// Consider to have 2 file path.
-
-    wsprintf(TempStrBuf, CnCmdLine, Dest);
-    //	wsprintf(TempStrBuf, L"XCOPY %s %s* /Y /S /F /Q", Source, Dest);
-    _wsystem(TempStrBuf);
-#endif
-    {
-        bool        bDelFile = false;
-        DWORD       FileAttribute;
-        const DWORD FILE_REMV_ATTR = FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_SYSTEM;
-
-        FileAttribute = GetFileAttributesW(Dest);
-        if (FileAttribute & FILE_REMV_ATTR)
-        {
-            SetFileAttributes(Dest, FileAttribute & ~FILE_REMV_ATTR);
-        }
-
-        bDelFile = DeleteFile(Dest);
-        if (false == bDelFile)
-        {
-            WSPrint(L"Delete File failed: %s", Dest);
-            retVal = -1;
-        }
-    }
-
-    return retVal;
-}
-
-
-bool CreateDir(wstring sPath)
-{
-    size_t      pos = 0;
-    DWORD       FileAttribute;
-    const DWORD FILE_REMV_ATTR = FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_SYSTEM;
-    bool        bSuccess = true;
-    wstring     tmpWStr;
-
-    sPath += L"\\";
-    while (std::string::npos != (pos = sPath.find_first_of(L"\\/", pos + 1) ))
-    {
-        tmpWStr = sPath.substr(0, pos).c_str();
-        FileAttribute = GetFileAttributesW(tmpWStr.c_str());
-        if (INVALID_FILE_ATTRIBUTES == FileAttribute)
-        {
-            bSuccess = CreateDirectoryW(tmpWStr.c_str(), NULL);
-            if (false == bSuccess)
-            {
-                WSPrint(L"    CreateDirectoryW (%s) - %s\n", tmpWStr.c_str(), GetSysLastErrString().c_str());
-            }
-        }
-        else
-        {
-            //WSPrint(L"Exist: %s\n", tmpWStr.c_str());
-        }
-    }
-
-    return bSuccess;
-}
-
-size_t SystemCpyFile(const wchar_t* Dest, const wchar_t* Src)
-{
-    size_t      retVal = 0;
-    wchar_t*    tmpStrBuf = NULL;
-
-    tmpStrBuf = new wchar_t[MAX_PATH*4 + 0x100]; // Consider to have 2 file path + CmdLine cout.
-#if 0
-    /*
-     * Use the follow, will never see the error message "ECHO F | XCOPY \"%s\" \"%s\" /Y /Q /S /E /R >nul 2>nul"
-     */
-    const wchar_t       CnCmdLine[] = L"ECHO F | XCOPY \"%s\" \"%s\" /Y /Q /V /R >nul";
-
-    wsprintf(tmpStrBuf, CnCmdLine, Src, Dest);
-    //WSPrint(tmpStrBuf, L"XCOPY %s %s* /Y /S /F /Q", Src, Dest);
-    _wsystem(tmpStrBuf);
-#else
-    bool        bSuccess;
-    wstring     tmpWStr;
-
-    tmpWStr = Dest;
-    tmpWStr = tmpWStr.substr(0, tmpWStr.find_last_of(L"\\/"));
-    CreateDir(tmpWStr);
-    bSuccess = CopyFileW(Src, Dest, false);
-    if (false == bSuccess)
-    {
-        WSPrint(L"    Fail on Copy - %s\n", GetSysLastErrString().c_str());
-    }
-    retVal = (bSuccess == true ? 0 : -1);
-#endif
-    delete[] tmpStrBuf;
-    return retVal;
-}
-
-size_t SystemDelEmptyDir(const wchar_t* Dest)
-{
-    size_t      retVal = 0;
-#if 0
-    const wchar_t       CnCmdLine[] = L"ECHO F | RMDIR /Q \"%s\" >nul";
-    wchar_t             TempStrBuf[MAX_PATH * 2 + (sizeof(CnCmdLine) / sizeof(CnCmdLine[0]))];	// Consider to have 2 file path.
-
-    wsprintf(TempStrBuf, CnCmdLine, Dest);
-    //	wsprintf(TempStrBuf, L"XCOPY %s %s* /Y /S /F /Q", Source, Dest);
-    _wsystem(TempStrBuf);
-#else
-    bool        bSuccess;
-    DWORD       FileAttribute;
-    const DWORD FILE_REMV_ATTR = FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_SYSTEM;
-
-    FileAttribute = GetFileAttributesW(Dest);
-    if (FileAttribute & FILE_REMV_ATTR)
-    {
-        SetFileAttributes(Dest, FileAttribute & ~FILE_REMV_ATTR);
-    }
-
-    bSuccess = RemoveDirectoryW(Dest);
-    retVal = bSuccess == true ? 0 : -1;
-#endif
-    return retVal;
-}
-
 struct FileOpActExtParam
 {
     bool*   FileDeleted;
@@ -713,8 +586,7 @@ size_t ProcFileOp(ListClearParam* lcParam)
 
                         if ((tmpWStr.size() != ShortFileWStr.size()) || memcmp(tmpWStr.c_str(), ShortFileWStr.c_str(), tmpWStr.size() * sizeof(wchar_t)))
                         {
-                            //WSPrint(L"[%d]: %s\n", __LINE__, __FUNCTIONW__);
-                            WSPrint(L"    Err.Find [%s]: %s\n", tmpWStr.c_str(), ShortFileWStr.c_str());
+                            //WSPrint(L"    Err.Find [%s]: %s\n", tmpWStr.c_str(), ShortFileWStr.c_str());
                             break;
                         }
                         if (DestListFile[szIdx] == SrcListFile[szTmpVal])
@@ -742,8 +614,8 @@ size_t ProcFileOp(ListClearParam* lcParam)
 
             if (FindListFile.size() != SearchResult.size())
             {
-                WSPrint(L"  - [FINDINGS COUTING ERR.]\n");
-                WSPrint(L"    Restult[%d],FindListCount[%d]\n", SearchResult.size(), FindListFile.size());
+                //WSPrint(L"  - [FINDINGS COUTING ERR.]\n");
+                //WSPrint(L"    Restult[%d],FindListCount[%d]\n", SearchResult.size(), FindListFile.size());
             }
 
             if ((lcParam->enumFileOp & FileOpActEmnu::ChkRefDirMatch) && FindListFile.size())
@@ -897,8 +769,8 @@ wstring CovFullPath(const wchar_t *sPath)
 {
     wchar_t         *tmpStrBuf;
     wstring         retWStr;
-    tmpStrBuf = new wchar_t[MAX_PATH];
-    if (_wfullpath(tmpStrBuf, sPath, MAX_PATH))
+    tmpStrBuf = new wchar_t[MAX_PATH*2];
+    if (_wfullpath(tmpStrBuf, sPath, MAX_PATH*2))
     {
         retWStr = tmpStrBuf;
     }
@@ -1072,7 +944,7 @@ int wmain(int argc, wchar_t* argv[], wchar_t* envp[])
 
         if (ExeAct == ParamAct::None)
         {
-            WTmpStr =  L" ListDup.exe <parameters>          VER(1.07)\n";
+            WTmpStr =  L" ListDup.exe <parameters>          VER(1.08)\n";
             WTmpStr += L"  -d   <Directory>     : Set (Dest) Directory\n";
             WTmpStr += L"  -src <Directory>     : Set (Src) Directory\n";
             WTmpStr += L"  -listClear           : Proc ListClear Action\n";
