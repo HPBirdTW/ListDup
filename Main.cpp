@@ -15,7 +15,8 @@
 
 using namespace std;
 
-#define COMPARE_THREAD  1
+#define COMPARE_THREAD          1
+#define THRHD_MULTI_EDITDIST    10  // Threshold for Starting enable multi-thread calcualte Editdistance
 
 enum FileOpActEmnu {
     None = 0x00, FileCmp = 0x01, FileCmpDel = 0x02, RemoveEmptyDir = 0x04,
@@ -86,6 +87,22 @@ public:
         }
 
         return a.EditDist < b.EditDist;
+    }
+
+    static int CalcEditDist(csSortByWSDir* _this, EditSortStr *a)
+    {
+        wstring aCutOffStr;
+
+        if (a->EditDist == EditSortStr::EDIT_NULL)
+        {
+            aCutOffStr = a->str;
+            if (_this->cutOffDir.size())
+            {
+                aCutOffStr = aCutOffStr.substr(aCutOffStr.find(_this->cutOffDir.c_str()) + _this->cutOffDir.size());
+            }
+            a->EditDist = EditDistance(_this->exptWStr.c_str(), (int)_this->exptWStr.length(), aCutOffStr.c_str(), (int)aCutOffStr.length());
+        }
+        return a->EditDist;
     }
 };
 
@@ -604,6 +621,28 @@ size_t ProcFileOp(ListClearParam* lcParam)
             tmpWStr = tmpWStr.substr(tmpWStr.find(lcParam->DestDir.c_str()) + lcParam->DestDir.size());
             SortByWSDir.exptWStr = tmpWStr;
             SortByWSDir.cutOffDir = lcParam->SrcDir.c_str();
+#if COMPARE_THREAD
+            if (SortListFile.size() > THRHD_MULTI_EDITDIST)
+            {
+                ThreadCount = 0;
+                for (auto& obj : SortListFile)
+                {
+                    threads.push_back(std::thread(csSortByWSDir::CalcEditDist, &SortByWSDir, &obj));
+                    ++ThreadCount;
+                }
+                if (ThreadCount >= 0)
+                {
+                    _pThread = threads.end();
+                    --_pThread;
+                    for (szTmpVal = 0; szTmpVal < ThreadCount; ++szTmpVal)
+                    {
+                        (_pThread - szTmpVal)->join();
+                    }
+                    ThreadCount = 0;
+                }
+                threads.clear();
+            }
+#endif
             sort(SortListFile.begin(), SortListFile.end(), SortByWSDir);
 
             FindListFile.clear();
@@ -631,6 +670,9 @@ size_t ProcFileOp(ListClearParam* lcParam)
             szRetValue = 0;
             bSkipFile = false;
             fileOpExtParam.MatchCount = 0;
+#if COMPARE_THREAD
+            ThreadCount = 0;
+#endif
             for (szIdx2 = 0; szIdx2 < FindListFile.size() && (bSkipFile == false); ++szIdx2)
             {
                 tmpWStr = FindListFile[szIdx2];
@@ -944,7 +986,7 @@ int wmain(int argc, wchar_t* argv[], wchar_t* envp[])
 
         if (ExeAct == ParamAct::None)
         {
-            WTmpStr =  L" ListDup.exe <parameters>          VER(1.08)\n";
+            WTmpStr =  L" ListDup.exe <parameters>          VER(1.09)\n";
             WTmpStr += L"  -d   <Directory>     : Set (Dest) Directory\n";
             WTmpStr += L"  -src <Directory>     : Set (Src) Directory\n";
             WTmpStr += L"  -listClear           : Proc ListClear Action\n";
