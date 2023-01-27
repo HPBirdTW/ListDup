@@ -659,9 +659,10 @@ size_t ProcFileOp(ListClearParam* lcParam)
 
             if ((lcParam->enumFileOp & FileOpActEmnu::ChkRefDirMatch) && FindListFile.size())
             {
-                tmpWStr = FindListFile[0];
+                tmpWStr = SortListFile[0].str;
                 FindListFile.clear();
-                if (SortListFile[0].EditDist == 0)
+                // EDIT_NULL means that there is only one item, no need to compare.
+                if (SortListFile[0].EditDist == 0 || SortListFile[0].EditDist == EditSortStr::EDIT_NULL)
                 {
                     FindListFile.push_back(tmpWStr);
                 }
@@ -986,7 +987,7 @@ int wmain(int argc, wchar_t* argv[], wchar_t* envp[])
 
         if (ExeAct == ParamAct::None)
         {
-            WTmpStr =  L" ListDup.exe <parameters>          VER(1.09)\n";
+            WTmpStr =  L" ListDup.exe <parameters>          VER(1.10)\n";
             WTmpStr += L"  -d   <Directory>     : Set (Dest) Directory\n";
             WTmpStr += L"  -src <Directory>     : Set (Src) Directory\n";
             WTmpStr += L"  -listClear           : Proc ListClear Action\n";
