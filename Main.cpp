@@ -18,7 +18,7 @@ using namespace std;
 #define COMPARE_THREAD          1
 // Threshold for Starting enable multi-thread calcualte Editdistance
 // 0: Disable the Multi-thread CompareFunction
-#define THRHD_MULTI_EDITDIST    0
+#define THRHD_MULTI_EDITDIST    5
 #define USING_EDIT_DISTANCE     0
 
 enum FileOpActEmnu {
@@ -34,7 +34,8 @@ struct ListClearParam
     size_t          MaxThread;
     size_t          enumFileOp;
     bool            boolCmpUseThrd;
-    ListClearParam() : MaxThread(0), DestDir(), SrcDir(), enumFileOp(0), cpyDir(), boolCmpUseThrd(true) {}
+    bool            bAlgoEditDist;
+    ListClearParam() : MaxThread(0), DestDir(), SrcDir(), enumFileOp(0), cpyDir(), boolCmpUseThrd(true), bAlgoEditDist(false){}
 };
 
 class EditSortStr
@@ -65,54 +66,9 @@ class csSortByWSDir
 public:
     wstring     exptWStr;
     wstring     cutOffDir;
-    bool operator() (EditSortStr& a, EditSortStr& b)
-    {
-        wstring aCutOffStr;
-        wstring bCutOffStr;
-
-        if (a.EditDist == EditSortStr::EDIT_NULL)
-        {
-            aCutOffStr = a.str;
-            if (cutOffDir.size())
-            {
-                aCutOffStr = aCutOffStr.substr(aCutOffStr.find(cutOffDir.c_str()) + cutOffDir.size());
-            }
-#if USING_EDIT_DISTANCE
-            a.EditDist = EditDistance(exptWStr.c_str(), (int)exptWStr.length(), aCutOffStr.c_str(), (int)aCutOffStr.length());
-#else
-            a.EditDist = lstrcmp(exptWStr.c_str(), aCutOffStr.c_str());
-            if (EditSortStr::EDIT_NULL == a.EditDist)
-            {
-                --a.EditDist;
-            }
-#endif
-        }
-
-        if (b.EditDist == EditSortStr::EDIT_NULL)
-        {
-            bCutOffStr = b.str;
-            if (cutOffDir.size())
-            {
-                bCutOffStr = bCutOffStr.substr(bCutOffStr.find(cutOffDir.c_str()) + cutOffDir.size());
-            }
-#if USING_EDIT_DISTANCE
-            b.EditDist = EditDistance(exptWStr.c_str(), (int)exptWStr.length(), bCutOffStr.c_str(), (int)bCutOffStr.length());
-#else
-            b.EditDist = lstrcmp(exptWStr.c_str(), bCutOffStr.c_str());
-            if (EditSortStr::EDIT_NULL == b.EditDist)
-            {
-                --b.EditDist;
-            }
-#endif
-        }
-#if USING_EDIT_DISTANCE
-        return a.EditDist < b.EditDist;
-#else
-        return (unsigned int)a.EditDist < (unsigned int)b.EditDist;
-#endif
-    }
-
-    static int CalcEditDist(csSortByWSDir* _this, EditSortStr *a)
+    bool        bAlgoEditDist;
+    csSortByWSDir() :bAlgoEditDist(false) {}
+    static int CalcEditDist(csSortByWSDir* _this, EditSortStr* a)
     {
         wstring aCutOffStr;
 
@@ -123,17 +79,38 @@ public:
             {
                 aCutOffStr = aCutOffStr.substr(aCutOffStr.find(_this->cutOffDir.c_str()) + _this->cutOffDir.size());
             }
-#if USING_EDIT_DISTANCE
-            a->EditDist = EditDistance(_this->exptWStr.c_str(), (int)_this->exptWStr.length(), aCutOffStr.c_str(), (int)aCutOffStr.length());
-#else
-            a->EditDist = lstrcmp(_this->exptWStr.c_str(), aCutOffStr.c_str());
-            if (EditSortStr::EDIT_NULL == a->EditDist)
+
+            if (true == _this->bAlgoEditDist)
             {
-                --(a->EditDist);
+                a->EditDist = EditDistance(_this->exptWStr.c_str(), (int)_this->exptWStr.length(), aCutOffStr.c_str(), (int)aCutOffStr.length());
             }
-#endif
+            else
+            {
+                a->EditDist = lstrcmp(_this->exptWStr.c_str(), aCutOffStr.c_str());
+                if (EditSortStr::EDIT_NULL == a->EditDist)
+                {
+                    --(a->EditDist);
+                }
+            }
         }
         return a->EditDist;
+    }
+    bool operator() (EditSortStr& a, EditSortStr& b)
+    {
+        bool    bResult;
+
+        a.EditDist = CalcEditDist(this, &a);
+        b.EditDist = CalcEditDist(this, &b);
+
+        if (true == bAlgoEditDist)
+        {
+            bResult = a.EditDist < b.EditDist;
+        }
+        else
+        {
+            bResult = (unsigned int)a.EditDist < (unsigned int)b.EditDist;
+        }
+        return bResult;
     }
 };
 
@@ -515,6 +492,8 @@ size_t ProcFileOp(ListClearParam* lcParam)
         GetSystemInfo(&SystemInfo);
         lcParam->MaxThread = SystemInfo.dwNumberOfProcessors - 1;
 
+        SortByWSDir.bAlgoEditDist = lcParam->bAlgoEditDist;
+
         if (lcParam->SrcDir.size() == 0 || lcParam->DestDir.size() == 0)
         {
             szRetValue = -1;
@@ -718,7 +697,9 @@ size_t ProcFileOp(ListClearParam* lcParam)
             for (szIdx2 = 0; szIdx2 < FindListFile.size() && (bSkipFile == false); ++szIdx2)
             {
 #if COMPARE_THREAD
-                if (false == lcParam->boolCmpUseThrd)
+                // Using the 0 == szIdx2, because the first might will be the nearest edit distance.
+                //   with direct calling will be fast than thread compare
+                if ((0 == szIdx2) || (false == lcParam->boolCmpUseThrd))
                 {
                     FileOpAction(DestListFile[szIdx].c_str(), FindListFile[szIdx2].c_str(), lcParam->enumFileOp, &fileOpExtParam);
                 }
@@ -922,6 +903,7 @@ int wmain(int argc, wchar_t* argv[], wchar_t* envp[])
     char*           prev_loc = NULL;
     size_t          enumExtFileOp = FileOpActEmnu::None;
     bool            boolCmpUseThrd = true;
+    bool            bAlgoEditDist = false;
 
     // Get the current deautlt local name.
     // Sets the locale to the ANSI code page obtained from the operating system.
@@ -1018,6 +1000,29 @@ int wmain(int argc, wchar_t* argv[], wchar_t* envp[])
         if (ExeAct == ParamAct::ProcListClear || ExeAct == ParamAct::ProcListCmp || ExeAct == ParamAct::CopyDiff
             || ExeAct == ParamAct::ProcListCmpAll || ExeAct == ParamAct::CopyFileDiff)
         {
+            if (ExeAct == ParamAct::ProcListClear)
+            {
+                lcParam.enumFileOp |= (FileOpActEmnu::FileCmpDel | FileOpActEmnu::RemoveEmptyDir);
+                boolCmpUseThrd = true;
+                bAlgoEditDist = true;
+            }
+            if (ExeAct == ParamAct::CopyDiff)
+            {
+                lcParam.enumFileOp |= (FileOpActEmnu::FileDiffCpy | FileOpActEmnu::ChkRefDirMatch);
+                boolCmpUseThrd = false;
+                bAlgoEditDist = false;
+            }
+            if (ExeAct == ParamAct::CopyFileDiff)
+            {
+                lcParam.enumFileOp |= FileOpActEmnu::FileDiffCpy;
+                boolCmpUseThrd = true;
+                bAlgoEditDist = true;
+            }
+            if (ExeAct == ParamAct::ProcListCmpAll)
+            {
+                lcParam.enumFileOp |= FileOpActEmnu::FileListAllRst;
+            }
+
             lcParam.DestDir = OutFile;
             lcParam.SrcDir = SrcFile;
             lcParam.cpyDir = CopyDest;
@@ -1025,28 +1030,13 @@ int wmain(int argc, wchar_t* argv[], wchar_t* envp[])
             lcParam.enumFileOp = FileOpActEmnu::FileCmp;
             lcParam.enumFileOp |= enumExtFileOp;
             lcParam.boolCmpUseThrd = boolCmpUseThrd;
-            if (ExeAct == ParamAct::ProcListClear)
-            {
-                lcParam.enumFileOp |= (FileOpActEmnu::FileCmpDel | FileOpActEmnu::RemoveEmptyDir);
-            }
-            if (ExeAct == ParamAct::CopyDiff)
-            {
-                lcParam.enumFileOp |= (FileOpActEmnu::FileDiffCpy | FileOpActEmnu::ChkRefDirMatch);
-            }
-            if (ExeAct == ParamAct::CopyFileDiff)
-            {
-                lcParam.enumFileOp |= FileOpActEmnu::FileDiffCpy;
-            }
-            if (ExeAct == ParamAct::ProcListCmpAll)
-            {
-                lcParam.enumFileOp |= FileOpActEmnu::FileListAllRst;
-            }
+            lcParam.bAlgoEditDist = bAlgoEditDist;
             ProcFileOp(&lcParam);
         }
 
         if (ExeAct == ParamAct::None)
         {
-            WTmpStr =  L" ListDup.exe <parameters>          VER(1.12)\n";
+            WTmpStr =  L" ListDup.exe <parameters>          VER(1.13)\n";
             WTmpStr += L"  -d   <Directory>     : Set (Dest) Directory\n";
             WTmpStr += L"  -src <Directory>     : Set (Src) Directory\n";
             WTmpStr += L"  -listClear           : Proc ListClear Action\n";
@@ -1058,7 +1048,7 @@ int wmain(int argc, wchar_t* argv[], wchar_t* envp[])
             WTmpStr += L"                         Find the same file name in different folder\n";
             WTmpStr += L"  -log <File>          : Log the console output\n";
             WTmpStr += L"  -silent              : Silent mode, no console out\n";
-            WTmpStr += L"  -disCmpUseThrd       : SomeTimes, thread will cost extra time\n";
+            //WTmpStr += L"  -disCmpUseThrd       : SomeTimes, thread will cost extra time\n";
             //WTmpStr += L"  -suffixVld           : Test SuffixAlgo\n";
             //WTmpStr += L"  -logVld <File>       : Verify the Result log\n";
 
