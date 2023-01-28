@@ -18,7 +18,7 @@ using namespace std;
 #define COMPARE_THREAD          1
 // Threshold for Starting enable multi-thread calcualte Editdistance
 // 0: Disable the Multi-thread CompareFunction
-#define THRHD_MULTI_EDITDIST    0   
+#define THRHD_MULTI_EDITDIST    0
 #define USING_EDIT_DISTANCE     0
 
 enum FileOpActEmnu {
@@ -503,8 +503,8 @@ size_t ProcFileOp(ListClearParam* lcParam)
     const wchar_t*              END_CHAR = L"$";
 #if COMPARE_THREAD
     std::vector<std::thread>	threads;
+    std::vector<std::thread>	thrdEditFunc;
     std::vector<std::thread>::iterator	_pThread;
-    size_t						ThreadCount = 0;
 #endif
     csSortByWSDir               SortByWSDir;
 
@@ -662,23 +662,18 @@ size_t ProcFileOp(ListClearParam* lcParam)
             {
                 if (THRHD_MULTI_EDITDIST && (SortListFile.size() > THRHD_MULTI_EDITDIST))
                 {
-                    ThreadCount = 0;
                     for (auto& obj : SortListFile)
                     {
-                        threads.push_back(std::thread(csSortByWSDir::CalcEditDist, &SortByWSDir, &obj));
-                        ++ThreadCount;
+                        thrdEditFunc.push_back(std::thread(csSortByWSDir::CalcEditDist, &SortByWSDir, &obj));
                     }
-                    if (ThreadCount > 0)
+                    if (thrdEditFunc.size())
                     {
-                        _pThread = threads.end();
-                        --_pThread;
-                        for (szTmpVal = 0; szTmpVal < ThreadCount; ++szTmpVal)
+                        for (_pThread = thrdEditFunc.begin(); _pThread != thrdEditFunc.end(); ++_pThread)
                         {
-                            (_pThread - szTmpVal)->join();
+                            _pThread->join();
                         }
-                        ThreadCount = 0;
                     }
-                    threads.clear();
+                    thrdEditFunc.clear();
                 }
             }
 #endif
@@ -719,16 +714,13 @@ size_t ProcFileOp(ListClearParam* lcParam)
             for (szIdx2 = 0; szIdx2 < FindListFile.size() && (bSkipFile == false); ++szIdx2)
             {
 #if COMPARE_THREAD
-                if ((0 == szIdx2) || (false == lcParam->boolCmpUseThrd))
+                if (false == lcParam->boolCmpUseThrd)
                 {
-                    ThreadCount = 0;
                     FileOpAction(DestListFile[szIdx].c_str(), FindListFile[szIdx2].c_str(), lcParam->enumFileOp, &fileOpExtParam);
                 }
                 else
                 {
-
                     threads.push_back(std::thread(FileOpAction, DestListFile[szIdx].c_str(), FindListFile[szIdx2].c_str(), lcParam->enumFileOp, &fileOpExtParam));
-                    ++ThreadCount;
                 }
                 continue;
 #else
@@ -742,15 +734,12 @@ size_t ProcFileOp(ListClearParam* lcParam)
 #endif
             }
 #if COMPARE_THREAD
-            if (ThreadCount > 0)
+            if (threads.size())
             {
-                _pThread = threads.end();
-                --_pThread;
-                for (szTmpVal = 0; szTmpVal < ThreadCount; ++szTmpVal)
+                for (_pThread = threads.begin(); _pThread != threads.end(); ++_pThread)
                 {
-                    (_pThread - szTmpVal)->join();
+                    _pThread->join();
                 }
-                ThreadCount = 0;
             }
             threads.clear();
 #endif
