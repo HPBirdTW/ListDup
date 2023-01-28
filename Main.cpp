@@ -279,10 +279,10 @@ int SuffixTestProc(const wchar_t* OutDir)
 
 struct FileOpActExtParam
 {
-    bool*   FileDeleted;
-    bool*   ReadDestFileFailed;
-    bool*   ReadSrcFileFailed;
-    int     MatchCount;
+    volatile bool*  FileDeleted;
+    volatile bool*  ReadDestFileFailed;
+    volatile bool*  ReadSrcFileFailed;
+    volatile int    MatchCount;
     FileOpActExtParam() :FileDeleted(NULL), ReadDestFileFailed(NULL), ReadSrcFileFailed(NULL), MatchCount(0) {}
 };
 size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t multiOp, FileOpActExtParam* extParam = NULL)
@@ -499,7 +499,7 @@ size_t ProcFileOp(ListClearParam* lcParam)
     SuffixTree                  suffixTree;
     VECT_INT                    SearchResult;
     FileOpActExtParam           fileOpExtParam;
-    bool                        bSkipFile;
+    volatile bool               bSkipFile;
     const wchar_t*              END_CHAR = L"$";
 #if COMPARE_THREAD
     std::vector<std::thread>	threads;
@@ -507,10 +507,14 @@ size_t ProcFileOp(ListClearParam* lcParam)
     std::vector<std::thread>::iterator	_pThread;
 #endif
     csSortByWSDir               SortByWSDir;
+    SYSTEM_INFO                 SystemInfo;
 
     //WSPrint(L"[%d]: %s\n", __LINE__, __FUNCTIONW__);
     do
     {
+        GetSystemInfo(&SystemInfo);
+        lcParam->MaxThread = SystemInfo.dwNumberOfProcessors - 1;
+
         if (lcParam->SrcDir.size() == 0 || lcParam->DestDir.size() == 0)
         {
             szRetValue = -1;
@@ -721,6 +725,12 @@ size_t ProcFileOp(ListClearParam* lcParam)
                 else
                 {
                     threads.push_back(std::thread(FileOpAction, DestListFile[szIdx].c_str(), FindListFile[szIdx2].c_str(), lcParam->enumFileOp, &fileOpExtParam));
+                    if (lcParam->MaxThread == threads.size())
+                    {
+                        _pThread = threads.begin();
+                        _pThread->join();
+                        threads.erase(_pThread);
+                    }
                 }
                 continue;
 #else
@@ -740,8 +750,8 @@ size_t ProcFileOp(ListClearParam* lcParam)
                 {
                     _pThread->join();
                 }
+                threads.clear();
             }
-            threads.clear();
 #endif
             SMD_TIME_END_TAG((L"FileCompare: "), FileCompare);
 
@@ -1036,7 +1046,7 @@ int wmain(int argc, wchar_t* argv[], wchar_t* envp[])
 
         if (ExeAct == ParamAct::None)
         {
-            WTmpStr =  L" ListDup.exe <parameters>          VER(1.11)\n";
+            WTmpStr =  L" ListDup.exe <parameters>          VER(1.12)\n";
             WTmpStr += L"  -d   <Directory>     : Set (Dest) Directory\n";
             WTmpStr += L"  -src <Directory>     : Set (Src) Directory\n";
             WTmpStr += L"  -listClear           : Proc ListClear Action\n";
