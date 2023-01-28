@@ -517,3 +517,23 @@ int EditDistance(const wchar_t* s1, int m, const wchar_t* s2, int n, wtCmp_func 
 
     return res;
 }
+
+void SMD_TimeTicket(LARGE_INTEGER* _Val)
+{
+    QueryPerformanceCounter(_Val);
+}
+
+void SMD_TimeDisp(LARGE_INTEGER StartVal, LARGE_INTEGER EndVal)
+{
+    LARGE_INTEGER   TimerVale;
+    LARGE_INTEGER   Freq;
+
+    QueryPerformanceCounter(&EndVal);
+    QueryPerformanceFrequency(&Freq);
+
+    TimerVale.QuadPart = EndVal.QuadPart - StartVal.QuadPart;
+    TimerVale.QuadPart *= 1000000;
+    TimerVale.QuadPart /= Freq.QuadPart;
+
+    WSPrint(L"%d.%03d ms\n", TimerVale.QuadPart / 1000, TimerVale.QuadPart % 1000);
+}

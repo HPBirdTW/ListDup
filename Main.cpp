@@ -16,7 +16,10 @@
 using namespace std;
 
 #define COMPARE_THREAD          1
-#define THRHD_MULTI_EDITDIST    10  // Threshold for Starting enable multi-thread calcualte Editdistance
+// Threshold for Starting enable multi-thread calcualte Editdistance
+// 0: Disable the Multi-thread CompareFunction
+#define THRHD_MULTI_EDITDIST    0   
+#define USING_EDIT_DISTANCE     0
 
 enum FileOpActEmnu {
     None = 0x00, FileCmp = 0x01, FileCmpDel = 0x02, RemoveEmptyDir = 0x04,
@@ -30,7 +33,8 @@ struct ListClearParam
     std::wstring    cpyDir;
     size_t          MaxThread;
     size_t          enumFileOp;
-    ListClearParam() : MaxThread(0), DestDir(), SrcDir(), enumFileOp(0), cpyDir() {}
+    bool            boolCmpUseThrd;
+    ListClearParam() : MaxThread(0), DestDir(), SrcDir(), enumFileOp(0), cpyDir(), boolCmpUseThrd(true) {}
 };
 
 class EditSortStr
@@ -73,7 +77,15 @@ public:
             {
                 aCutOffStr = aCutOffStr.substr(aCutOffStr.find(cutOffDir.c_str()) + cutOffDir.size());
             }
+#if USING_EDIT_DISTANCE
             a.EditDist = EditDistance(exptWStr.c_str(), (int)exptWStr.length(), aCutOffStr.c_str(), (int)aCutOffStr.length());
+#else
+            a.EditDist = lstrcmp(exptWStr.c_str(), aCutOffStr.c_str());
+            if (EditSortStr::EDIT_NULL == a.EditDist)
+            {
+                --a.EditDist;
+            }
+#endif
         }
 
         if (b.EditDist == EditSortStr::EDIT_NULL)
@@ -83,10 +95,21 @@ public:
             {
                 bCutOffStr = bCutOffStr.substr(bCutOffStr.find(cutOffDir.c_str()) + cutOffDir.size());
             }
+#if USING_EDIT_DISTANCE
             b.EditDist = EditDistance(exptWStr.c_str(), (int)exptWStr.length(), bCutOffStr.c_str(), (int)bCutOffStr.length());
+#else
+            b.EditDist = lstrcmp(exptWStr.c_str(), bCutOffStr.c_str());
+            if (EditSortStr::EDIT_NULL == b.EditDist)
+            {
+                --b.EditDist;
+            }
+#endif
         }
-
+#if USING_EDIT_DISTANCE
         return a.EditDist < b.EditDist;
+#else
+        return (unsigned int)a.EditDist < (unsigned int)b.EditDist;
+#endif
     }
 
     static int CalcEditDist(csSortByWSDir* _this, EditSortStr *a)
@@ -100,7 +123,15 @@ public:
             {
                 aCutOffStr = aCutOffStr.substr(aCutOffStr.find(_this->cutOffDir.c_str()) + _this->cutOffDir.size());
             }
+#if USING_EDIT_DISTANCE
             a->EditDist = EditDistance(_this->exptWStr.c_str(), (int)_this->exptWStr.length(), aCutOffStr.c_str(), (int)aCutOffStr.length());
+#else
+            a->EditDist = lstrcmp(_this->exptWStr.c_str(), aCutOffStr.c_str());
+            if (EditSortStr::EDIT_NULL == a->EditDist)
+            {
+                --(a->EditDist);
+            }
+#endif
         }
         return a->EditDist;
     }
@@ -232,7 +263,7 @@ int SuffixTestProc(const wchar_t* OutDir)
         threads.push_back(std::thread(SuffixVldBuild, (int)szTmpVal, LocalMaxThreadCount, &ListFileContext));
         ++ThreadCount;
     }
-    if (ThreadCount >= 0)
+    if (ThreadCount > 0)
     {
         _pThread = threads.end();
         --_pThread;
@@ -270,7 +301,6 @@ size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t mult
     {
         if (multiOp & FileOpActEmnu::FileCmp)
         {
-//#if COMPARE_THREAD
             while (!fileOpMutex.try_lock())
             {
                 this_thread::sleep_for(chrono::milliseconds(1));
@@ -317,13 +347,13 @@ size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t mult
                     }
                 }
             }
-//#endif
+            fileOpMutex.unlock();
+
             bFileCmpRst = GetFileBuf(destFile, &destFileBuf , &destFileBufSize);
             if (bFileCmpRst == false)
             {
                 if (extParam && extParam->ReadDestFileFailed)    *extParam->ReadDestFileFailed = true;
                 retVal = FileOpActEmnu::FileCmp;
-                fileOpMutex.unlock();
                 break;
             }
 
@@ -332,11 +362,8 @@ size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t mult
             {
                 if (extParam && extParam->ReadSrcFileFailed)    *extParam->ReadSrcFileFailed = true;
                 retVal = FileOpActEmnu::FileCmp;
-                fileOpMutex.unlock();
                 break;
             }
-
-            fileOpMutex.unlock();
 
             bFileCmpRst = false;
             if (destFileBufSize == srcFileBufSize)
@@ -585,65 +612,78 @@ size_t ProcFileOp(ListClearParam* lcParam)
             ShortFileWStr = DestListFile[szIdx];
             ShortFileWStr = ShortFileWStr.substr(ShortFileWStr.find_last_of(L"\\/") + 1);
 
+            SMD_TIME_START_TAG(FindSuffix);
             tmpWStr = ShortFileWStr + END_CHAR;
             SearchResult.clear();
             suffixTree.findIdxBuf((UINT8*)tmpWStr.c_str(), (int)tmpWStr.size() * sizeof(wchar_t), &SearchResult);
+            sort(SearchResult.begin(), SearchResult.end());
+            SMD_TIME_END_TAG((L"FindSuffix: "), FindSuffix);
 
+            SMD_TIME_START_TAG(GetFileList);
             SortListFile.clear();
+            tmpVal = 0;
+            szTmpVal = 0;
             for (szIdx2 = 0; szIdx2 < SearchResult.size(); ++szIdx2)
             {
-                tmpVal = SearchResult[szIdx2];
-                for (szTmpVal = 0; szTmpVal < SrcListFile.size(); ++szTmpVal)
+                for (; szTmpVal < SrcListFile.size(); ++szTmpVal)
                 {
-                    tmpVal -= (int)((SrcListFile[szTmpVal].size() + wcslen(END_CHAR)) * sizeof(wchar_t));
-                    if (tmpVal <= 0)
+                    tmpVal += (int)((SrcListFile[szTmpVal].size() + wcslen(END_CHAR)) * sizeof(wchar_t));
+                    if (tmpVal > SearchResult[szIdx2])
                     {
-                        tmpWStr = SrcListFile[szTmpVal];
+                        szTmpVal += 1;
+                        tmpWStr = SrcListFile[szTmpVal-1];
                         tmpWStr = tmpWStr.substr(tmpWStr.find_last_of(L"\\/") + 1);
 
-                        if ((tmpWStr.size() != ShortFileWStr.size()) || memcmp(tmpWStr.c_str(), ShortFileWStr.c_str(), tmpWStr.size() * sizeof(wchar_t)))
+                        if ((tmpWStr.size() != ShortFileWStr.size()) || lstrcmp(tmpWStr.c_str(), ShortFileWStr.c_str()))
                         {
                             //WSPrint(L"    Err.Find [%s]: %s\n", tmpWStr.c_str(), ShortFileWStr.c_str());
                             break;
                         }
-                        if (DestListFile[szIdx] == SrcListFile[szTmpVal])
+                        if (DestListFile[szIdx] == SrcListFile[szTmpVal-1])
                         {
                             // The same file compare
                             WSPrint(L"    [Find_Same_File] - %s\n");
                             break;
                         }
-                        SortListFile.push_back(SrcListFile[szTmpVal]);
+                        SortListFile.push_back(SrcListFile[szTmpVal-1]);
                         break;
                     }
                 }
             }
+            SMD_TIME_END_TAG((L"GetMatchFile: "), GetFileList);
+
+            SMD_TIME_START_TAG(EditCompare);
             tmpWStr = DestListFile[szIdx];
             tmpWStr = tmpWStr.substr(tmpWStr.find(lcParam->DestDir.c_str()) + lcParam->DestDir.size());
             SortByWSDir.exptWStr = tmpWStr;
             SortByWSDir.cutOffDir = lcParam->SrcDir.c_str();
 #if COMPARE_THREAD
-            if (SortListFile.size() > THRHD_MULTI_EDITDIST)
+            if (true == lcParam->boolCmpUseThrd)
             {
-                ThreadCount = 0;
-                for (auto& obj : SortListFile)
+                if (THRHD_MULTI_EDITDIST && (SortListFile.size() > THRHD_MULTI_EDITDIST))
                 {
-                    threads.push_back(std::thread(csSortByWSDir::CalcEditDist, &SortByWSDir, &obj));
-                    ++ThreadCount;
-                }
-                if (ThreadCount >= 0)
-                {
-                    _pThread = threads.end();
-                    --_pThread;
-                    for (szTmpVal = 0; szTmpVal < ThreadCount; ++szTmpVal)
-                    {
-                        (_pThread - szTmpVal)->join();
-                    }
                     ThreadCount = 0;
+                    for (auto& obj : SortListFile)
+                    {
+                        threads.push_back(std::thread(csSortByWSDir::CalcEditDist, &SortByWSDir, &obj));
+                        ++ThreadCount;
+                    }
+                    if (ThreadCount > 0)
+                    {
+                        _pThread = threads.end();
+                        --_pThread;
+                        for (szTmpVal = 0; szTmpVal < ThreadCount; ++szTmpVal)
+                        {
+                            (_pThread - szTmpVal)->join();
+                        }
+                        ThreadCount = 0;
+                    }
+                    threads.clear();
                 }
-                threads.clear();
             }
 #endif
             sort(SortListFile.begin(), SortListFile.end(), SortByWSDir);
+            SMD_TIME_END_TAG((L"EditCompare: "), EditCompare);
 
             FindListFile.clear();
             for (szIdx2 = 0; szIdx2 < SortListFile.size(); ++szIdx2)
@@ -662,24 +702,34 @@ size_t ProcFileOp(ListClearParam* lcParam)
                 tmpWStr = SortListFile[0].str;
                 FindListFile.clear();
                 // EDIT_NULL means that there is only one item, no need to compare.
-                if (SortListFile[0].EditDist == 0 || SortListFile[0].EditDist == EditSortStr::EDIT_NULL)
+                if (SortListFile[0].EditDist == EditSortStr::EDIT_NULL)
+                {
+                    csSortByWSDir::CalcEditDist(&SortByWSDir, &(SortListFile[0]));
+                }
+                if (SortListFile[0].EditDist == 0)
                 {
                     FindListFile.push_back(tmpWStr);
                 }
             }
 
+            SMD_TIME_START_TAG(FileCompare);
             szRetValue = 0;
             bSkipFile = false;
             fileOpExtParam.MatchCount = 0;
-#if COMPARE_THREAD
-            ThreadCount = 0;
-#endif
             for (szIdx2 = 0; szIdx2 < FindListFile.size() && (bSkipFile == false); ++szIdx2)
             {
-                tmpWStr = FindListFile[szIdx2];
 #if COMPARE_THREAD
-                threads.push_back(std::thread(FileOpAction, DestListFile[szIdx].c_str(), FindListFile[szIdx2].c_str(), lcParam->enumFileOp, &fileOpExtParam));
-                ++ThreadCount;
+                if ((0 == szIdx2) || (false == lcParam->boolCmpUseThrd))
+                {
+                    ThreadCount = 0;
+                    FileOpAction(DestListFile[szIdx].c_str(), FindListFile[szIdx2].c_str(), lcParam->enumFileOp, &fileOpExtParam);
+                }
+                else
+                {
+
+                    threads.push_back(std::thread(FileOpAction, DestListFile[szIdx].c_str(), FindListFile[szIdx2].c_str(), lcParam->enumFileOp, &fileOpExtParam));
+                    ++ThreadCount;
+                }
                 continue;
 #else
                 szRetValue = FileOpAction(DestListFile[szIdx].c_str(), FindListFile[szIdx2].c_str(), lcParam->enumFileOp, &fileOpExtParam);
@@ -692,7 +742,7 @@ size_t ProcFileOp(ListClearParam* lcParam)
 #endif
             }
 #if COMPARE_THREAD
-            if (ThreadCount >= 0)
+            if (ThreadCount > 0)
             {
                 _pThread = threads.end();
                 --_pThread;
@@ -704,6 +754,8 @@ size_t ProcFileOp(ListClearParam* lcParam)
             }
             threads.clear();
 #endif
+            SMD_TIME_END_TAG((L"FileCompare: "), FileCompare);
+
             if (0 == FindListFile.size())
             {
                 WSPrint(L"  - [NOT FOUND]\n");
@@ -870,6 +922,7 @@ int wmain(int argc, wchar_t* argv[], wchar_t* envp[])
     ListClearParam  lcParam;
     char*           prev_loc = NULL;
     size_t          enumExtFileOp = FileOpActEmnu::None;
+    bool            boolCmpUseThrd = true;
 
     // Get the current deautlt local name.
     // Sets the locale to the ANSI code page obtained from the operating system.
@@ -885,6 +938,12 @@ int wmain(int argc, wchar_t* argv[], wchar_t* envp[])
         if (0 == WTmpStr.compare(L"-silent"))
         {
             enumExtFileOp |= FileOpActEmnu::SilentMode;
+            continue;
+        }
+
+        if (0 == WTmpStr.compare(L"-disCmpUseThrd"))
+        {
+            boolCmpUseThrd = false;
             continue;
         }
 
@@ -966,6 +1025,7 @@ int wmain(int argc, wchar_t* argv[], wchar_t* envp[])
             lcParam.MaxThread = 0;
             lcParam.enumFileOp = FileOpActEmnu::FileCmp;
             lcParam.enumFileOp |= enumExtFileOp;
+            lcParam.boolCmpUseThrd = boolCmpUseThrd;
             if (ExeAct == ParamAct::ProcListClear)
             {
                 lcParam.enumFileOp |= (FileOpActEmnu::FileCmpDel | FileOpActEmnu::RemoveEmptyDir);
@@ -987,7 +1047,7 @@ int wmain(int argc, wchar_t* argv[], wchar_t* envp[])
 
         if (ExeAct == ParamAct::None)
         {
-            WTmpStr =  L" ListDup.exe <parameters>          VER(1.10)\n";
+            WTmpStr =  L" ListDup.exe <parameters>          VER(1.11)\n";
             WTmpStr += L"  -d   <Directory>     : Set (Dest) Directory\n";
             WTmpStr += L"  -src <Directory>     : Set (Src) Directory\n";
             WTmpStr += L"  -listClear           : Proc ListClear Action\n";
@@ -999,6 +1059,7 @@ int wmain(int argc, wchar_t* argv[], wchar_t* envp[])
             WTmpStr += L"                         Find the same file name in different folder\n";
             WTmpStr += L"  -log <File>          : Log the console output\n";
             WTmpStr += L"  -silent              : Silent mode, no console out\n";
+            WTmpStr += L"  -disCmpUseThrd       : SomeTimes, thread will cost extra time\n";
             //WTmpStr += L"  -suffixVld           : Test SuffixAlgo\n";
             //WTmpStr += L"  -logVld <File>       : Verify the Result log\n";
 

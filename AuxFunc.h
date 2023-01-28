@@ -5,6 +5,23 @@
 #include <string>
 #include <fstream>
 #include <mutex>
+#include <profileapi.h>
+
+#define DISP_MEASRE_TIME	0
+
+#if DISP_MEASRE_TIME
+#define SMD_TIME_START_TAG(tag) {\
+        LARGE_INTEGER tag##TimeStart, tag##TimeEnd; \
+        SMD_TimeTicket(& tag##TimeStart);
+
+#define SMD_TIME_END_TAG(arg,tag) \
+        SMD_TimeTicket(& tag##TimeEnd); \
+        WSPrint arg; \
+        SMD_TimeDisp( tag##TimeStart, tag##TimeEnd ); }
+#else
+#define SMD_TIME_START_TAG(tag)
+#define SMD_TIME_END_TAG(arg,tag)
+#endif
 
 #define WSPrint gWsPrint.wsPrint
 #define ConOutFile gWsPrint.outFileInit
@@ -52,3 +69,5 @@ public:
 wstring GetSysLastErrString();
 std::wstring ConvertAnsiToWide(const char* ansiStr, int multyCount);
 std::string ConvertWideToANSI(const std::wstring& wstr);
+void SMD_TimeTicket(LARGE_INTEGER* _Val);
+void SMD_TimeDisp(LARGE_INTEGER StartVal, LARGE_INTEGER EndVal);
