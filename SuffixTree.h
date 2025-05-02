@@ -11,7 +11,8 @@ typedef std::vector<UINT8>      VECT_UINT8;
 typedef std::vector<int>        VECT_INT;
 typedef void (*VSPRINT)(UINT8*, int, int suffixIndex);
 
-#define USE_SUFFIX_ARRAY		0
+#define USE_SUFFIX_ARRAY        0
+#define VALIDATE_CHECK          0
 
 #if USE_SUFFIX_ARRAY == 0
 struct ChildNode;
@@ -40,7 +41,7 @@ public:
 struct ChildNode
 {
     SuffixNodePtr   node;
-    int             index;
+    int             charIdx;
 };
 #endif
 
@@ -139,16 +140,18 @@ public:
     void clear();
     void dfsTraversal(VSPRINT func);
     bool findIdxBuf(UINT8* patternBuf, int bufLen, VECT_INT* result);
+#if VALIDATE_CHECK == 1
     bool validate();
+#endif
 private:
     void build();
     void startPhase(int i);
-    void getLeafIndex(SuffixNodePtr node, VECT_INT* result);
+    void getLeafIndex(SuffixNodePtr node, int rootLen, VECT_INT* result);
     void clearLeafNode(SuffixNodePtr node);
     int diff(SuffixNodePtr node);
     SuffixNodePtr selectNode();
-    SuffixNodePtr selectNode(int index);
-    void walkDown(int index);
+    SuffixNodePtr selectNode(int NodeIdx);
+    void walkDown(int NodeIdx);
     UINT8 nextChar(int i, bool* CreateInternalLeaf);
     void dfsTraversal(SuffixNodePtr root, VECT_UINT8* result, VSPRINT printFunc);
     void setIndexUsingDfs(SuffixNodePtr root, int size);

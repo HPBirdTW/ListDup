@@ -4,7 +4,7 @@
 // Global variable
 //
 
-CLS_PRINT	gWsPrint;
+CLS_PRINT   gWsPrint;
 
 std::string ConvertWideToANSI(const std::wstring& wstr)
 {
@@ -230,7 +230,7 @@ int ListAllFileByAttribue(const wchar_t* _CurDir, vector<wstring>* RetDispFileLi
 
 bool GetFileBuf(const wchar_t* FileName, BYTE** outFile, size_t* OutBufSize)
 {
-    int			RetValue = 0;
+    int         RetValue = 0;
     HANDLE      FileHandle = NULL;
     DWORD       FileSize;
     BOOLEAN     bSuccess;
@@ -315,7 +315,7 @@ size_t SystemDelFile(const wchar_t* Dest)
      */
 #if 0
     const wchar_t       CnCmdLine[] = L"DEL \"%s\" /F /Q >nul";
-    //wchar_t             TempStrBuf[MAX_PATH * 2 + (sizeof(CnCmdLine) / sizeof(CnCmdLine[0]))];	// Consider to have 2 file path.
+    //wchar_t             TempStrBuf[MAX_PATH * 2 + (sizeof(CnCmdLine) / sizeof(CnCmdLine[0]))];  // Consider to have 2 file path.
 
     wsprintf(TempStrBuf, CnCmdLine, Dest);
     _wsystem(TempStrBuf);
@@ -414,10 +414,10 @@ size_t SystemDelEmptyDir(const wchar_t* Dest)
     TempStrBuf = new wchar_t[MAX_PATH * 4];
 #if 0
     const wchar_t       CnCmdLine[] = L"ECHO F | RMDIR /Q \"%s\" >nul";
-    //wchar_t             TempStrBuf[MAX_PATH * 2 + (sizeof(CnCmdLine) / sizeof(CnCmdLine[0]))];	// Consider to have 2 file path.
+    //wchar_t             TempStrBuf[MAX_PATH * 2 + (sizeof(CnCmdLine) / sizeof(CnCmdLine[0]))];  // Consider to have 2 file path.
 
     wsprintf(TempStrBuf, CnCmdLine, Dest);
-    //	wsprintf(TempStrBuf, L"XCOPY %s %s* /Y /S /F /Q", Source, Dest);
+    //  wsprintf(TempStrBuf, L"XCOPY %s %s* /Y /S /F /Q", Source, Dest);
     _wsystem(TempStrBuf);
 #else
     bool        bSuccess;

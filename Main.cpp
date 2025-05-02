@@ -348,9 +348,9 @@ size_t ProcFileOp(ListClearParam* lcParam)
     volatile bool               bSkipFile;
     const wchar_t*              END_CHAR = L"$";
 #if COMPARE_THREAD
-    std::vector<std::thread>	threads;
-    std::vector<std::thread>	thrdEditFunc;
-    std::vector<std::thread>::iterator	_pThread;
+    std::vector<std::thread>    threads;
+    std::vector<std::thread>    thrdEditFunc;
+    std::vector<std::thread>::iterator  _pThread;
 #endif
     csSortByWSDir               SortByWSDir;
     SYSTEM_INFO                 SystemInfo;
@@ -370,7 +370,7 @@ size_t ProcFileOp(ListClearParam* lcParam)
             break;
         }
 
-        WSPrint(L"GetSrcFileList - %s\n", lcParam->SrcDir.c_str());
+        WSPrint(L"\n[Get Source file system list] : %s\n", lcParam->SrcDir.c_str());
         gWsPrint.EnWaitLongFunc();
         szTmpVal = ListAllFileByAttribue(lcParam->SrcDir.c_str(), &SrcListFile, FILE_ATTRIBUTE_ARCHIVE, FILE_ATTRIBUTE_DIRECTORY);
         gWsPrint.DisWaitLongFunc();
@@ -387,14 +387,14 @@ size_t ProcFileOp(ListClearParam* lcParam)
             break;
         }
 
-        WSPrint(L"GetDestFileList - %s\n", lcParam->DestDir.c_str());
+        WSPrint(L"\n[Get Destion file system list] : %s\n", lcParam->DestDir.c_str());
         gWsPrint.EnWaitLongFunc();
         szTmpVal = ListAllFileByAttribue(lcParam->DestDir.c_str(), &DestListFile, FILE_ATTRIBUTE_ARCHIVE, FILE_ATTRIBUTE_DIRECTORY);
         gWsPrint.DisWaitLongFunc();
         if (szTmpVal != 0)
         {
             szRetValue = szTmpVal;
-            WSPrint(L"Line[%ld]: Error. %s\n", __LINE__, __FUNCTIONW__);
+            WSPrint(L"\nLine[%ld]: Error. %s\n", __LINE__, __FUNCTIONW__);
             break;
         }
 
@@ -405,11 +405,11 @@ size_t ProcFileOp(ListClearParam* lcParam)
             tmpWStr += END_CHAR;
         }
 
-        WSPrint(L"[Build] Suffix Tree - size(0x%08x)\n", (UINT)(tmpWStr.size() * sizeof(wchar_t)) );
+        WSPrint(L"\n[Build] Suffix Tree : size(0x%08x)\n", (UINT)(tmpWStr.size() * sizeof(wchar_t)) );
         gWsPrint.EnWaitLongFunc();
-        suffixTree.build((UINT8*)tmpWStr.c_str(), (int)(tmpWStr.size() * sizeof(wchar_t)) );
+        suffixTree.build((UINT8*)tmpWStr.c_str(), (int)(tmpWStr.size() * sizeof(wchar_t)));
         gWsPrint.DisWaitLongFunc();
-        WSPrint(L"  -- [Finish] Suffix Tree\n");
+        WSPrint(L"\n  -- [Finish] Suffix Tree.\n");
 
         fileOpExtParam.FileDeleted = &bSkipFile;
         fileOpExtParam.ReadDestFileFailed = &bSkipFile;
@@ -775,7 +775,7 @@ int wmain(int argc, wchar_t* argv[], wchar_t* envp[])
 
         if (ExeAct == ParamAct::None)
         {
-            WTmpStr =  L" ListDup.exe <parameters>          VER(1.15)\n";
+            WTmpStr =  L" ListDup.exe <parameters>          VER(1.16)\n";
             WTmpStr += L"  -d   <Directory>     : Set (Dest) Directory\n";
             WTmpStr += L"  -src <Directory>     : Set (Src) Directory\n";
             WTmpStr += L"  -listClear           : Proc ListClear Action\n";

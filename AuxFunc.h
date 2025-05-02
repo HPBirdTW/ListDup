@@ -7,7 +7,7 @@
 #include <mutex>
 #include <profileapi.h>
 
-#define DISP_MEASRE_TIME	0
+#define DISP_MEASRE_TIME    0
 
 #if DISP_MEASRE_TIME
 #define SMD_TIME_START_TAG(tag) {\
@@ -29,7 +29,7 @@
 using namespace std;
 
 class CLS_PRINT;
-extern CLS_PRINT	gWsPrint;
+extern CLS_PRINT    gWsPrint;
 
 int ListAllFileByAttribue(const wchar_t* CurDir, vector<wstring>* RetDispFileList, DWORD OrFileAttrMask, DWORD ExcludeFileAttrMask);
 bool GetFileBuf(const wchar_t* FileName, BYTE** outFile, size_t* outBufSize);
@@ -43,26 +43,26 @@ int EditDistance(const wchar_t* s1, int m, const wchar_t* s2, int n, wtCmp_func 
 
 class CLS_PRINT
 {
-	FILE*           pConOutFile;
-	bool            bConOutDisp;
-	bool			bTmrthrClose;
-	bool			bWaitLongFunc;
-	size_t			szDCountMis;
-	std::thread*    pTmrthr;
-	std::mutex	    Mutx;
+  FILE*             pConOutFile;
+  bool              bConOutDisp;
+  bool              bTmrthrClose;
+  bool              bWaitLongFunc;
+  size_t            szDCountMis;
+  std::thread*      pTmrthr;
+  std::mutex        Mutx;
 public:
-	static void		TmrthrFunc(CLS_PRINT*);
-	CLS_PRINT() : pConOutFile(NULL), bConOutDisp(true), pTmrthr(NULL), bTmrthrClose(false), szDCountMis(0), bWaitLongFunc(false)
-	{
-		pTmrthr = new std::thread(TmrthrFunc, this);
-	};
-	int outFileInit(const wchar_t* outFileName);
-	int wsPrint(wchar_t const* const _Format, ...);
-	bool EnConOutSilent();
-	bool DisConOutSilent();
-	bool EnWaitLongFunc();
-	bool DisWaitLongFunc();
-	~CLS_PRINT();
+  static void       TmrthrFunc(CLS_PRINT*);
+  CLS_PRINT() : pConOutFile(NULL), bConOutDisp(true), pTmrthr(NULL), bTmrthrClose(false), szDCountMis(0), bWaitLongFunc(false)
+  {
+    pTmrthr = new std::thread(TmrthrFunc, this);
+  };
+  int outFileInit(const wchar_t* outFileName);
+  int wsPrint(wchar_t const* const _Format, ...);
+  bool EnConOutSilent();
+  bool DisConOutSilent();
+  bool EnWaitLongFunc();
+  bool DisWaitLongFunc();
+  ~CLS_PRINT();
 
 };
 

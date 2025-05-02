@@ -50,33 +50,33 @@ void* End::operator new[](std::size_t count)
 }
 
 #if USE_SUFFIX_ARRAY == 0
-SuffixNodePtr SuffixNode::GetChildNode(int index, VECT_CHILDNODE* _child)
+SuffixNodePtr SuffixNode::GetChildNode(int charIdx, VECT_CHILDNODE* _child)
 {
     for (auto& obj : *_child)
     {
-        if (obj.index == index)
+        if (obj.charIdx == charIdx)
             return obj.node;
     }
 
     return NULL;
 }
 
-void SuffixNode::SetChildNode(int index, SuffixNodePtr node, VECT_CHILDNODE* _child)
+void SuffixNode::SetChildNode(int charIdx, SuffixNodePtr node, VECT_CHILDNODE* _child)
 {
     bool        exist = false;
     ChildNode   childObj;
 
     for (auto& obj : *_child)
     {
-        if (obj.index == index)
+        if (obj.charIdx == charIdx)
         {
             obj.node = node;
             exist = true;
         }
     }
-    if (exist == false && index < SuffixNode::TOTAL)
+    if (exist == false && charIdx < SuffixNode::TOTAL)
     {
-        childObj.index = index;
+        childObj.charIdx = charIdx;
         childObj.node = node;
         _child->push_back(childObj);
     }
@@ -168,7 +168,7 @@ SuffixNodePtr SuffixTree::selectNode()
 #if USE_SUFFIX_ARRAY == 0
     for (auto& obj : active.activeNode->child)
     {
-        if (obj.index == input[active.activeEdge])
+        if (obj.charIdx == input[active.activeEdge])
         {
             return obj.node;
         }
@@ -179,12 +179,12 @@ SuffixNodePtr SuffixTree::selectNode()
 #endif
 }
 
-SuffixNodePtr SuffixTree::selectNode(int index)
+SuffixNodePtr SuffixTree::selectNode(int NodeIdx)
 {
 #if USE_SUFFIX_ARRAY == 0
     for (auto& obj : active.activeNode->child)
     {
-        if (obj.index == input[index])
+        if (obj.charIdx == input[NodeIdx])
         {
             return obj.node;
         }
@@ -192,11 +192,11 @@ SuffixNodePtr SuffixTree::selectNode(int index)
 
     return NULL;
 #else
-    return active.activeNode->child[input[index]];
+    return active.activeNode->child[input[NodeIdx]];
 #endif
 }
 
-void SuffixTree::walkDown(int index)
+void SuffixTree::walkDown(int NodeIdx)
 {
     SuffixNodePtr node = selectNode();
     //active length is greater than path edge length.
@@ -207,9 +207,9 @@ void SuffixTree::walkDown(int index)
         active.activeNode = node;
         active.activeLength = active.activeLength - diff(node);
 #if USE_SUFFIX_ARRAY == 0
-        active.activeEdge = SuffixNode::GetChildNode(input[index], &node->child)->start;
+        active.activeEdge = SuffixNode::GetChildNode(input[NodeIdx], &node->child)->start;
 #else
-        active.activeEdge = node->child[input[index]]->start;
+        active.activeEdge = node->child[input[NodeIdx]]->start;
 #endif
     }
     else
@@ -292,6 +292,7 @@ void SuffixTree::build(const UINT8* _input, int inputLen)
 //        cout << "Exception failed\n";
     }
 }
+#if VALIDATE_CHECK == 1
 
 bool SuffixTree::validate()
 {
@@ -484,6 +485,8 @@ bool SuffixTree::validate()
     return FailValue == 0 ? true : false;
 }
 
+#endif
+
 void SuffixTree::setIndexUsingDfs(SuffixNodePtr root, int size)
 {
     struct Param
@@ -530,16 +533,22 @@ void SuffixTree::setIndexUsingDfs(SuffixNodePtr root, int size)
     } while (NodeStack.size());
     NodeStack.clear();
 }
-
-void SuffixTree::getLeafIndex(SuffixNodePtr node, VECT_INT* result)
+  
+void SuffixTree::getLeafIndex(SuffixNodePtr node, int rootLen, VECT_INT* result)
 {
     vector< SuffixNodePtr>  NodeStack;
+    int                     valLen;
+    VECT_INT                VectLenStack;
 
     NodeStack.push_back(node);
+    valLen = rootLen + (node->end->end - node->start + 1);
+    VectLenStack.push_back(valLen);
     do
     {
         node = NodeStack[NodeStack.size() - 1];
         NodeStack.pop_back();
+        valLen = VectLenStack[VectLenStack.size() - 1];
+        VectLenStack.pop_back();
 
         if (node == NULL)
         {
@@ -548,7 +557,8 @@ void SuffixTree::getLeafIndex(SuffixNodePtr node, VECT_INT* result)
 
         if (node->index != INNER_NODE_INDEX)
         {
-            result->push_back(node->index);
+            // result->push_back(node->index);
+            result->push_back((this->inputExtLen -1) - valLen);
             continue;
         }
 
@@ -557,12 +567,15 @@ void SuffixTree::getLeafIndex(SuffixNodePtr node, VECT_INT* result)
         {
 #if USE_SUFFIX_ARRAY == 0
             NodeStack.push_back(node.node);
+            VectLenStack.push_back(valLen + (node.node->end->end - node.node->start + 1));
 #else
             NodeStack.push_back(node);
+            VectLenStack.push_back(valLen + (node->end->end - node->start + 1));
 #endif
         }
     } while (NodeStack.size());
     NodeStack.clear();
+    VectLenStack.clear();
 }
 
 bool SuffixTree::findIdxBuf(UINT8* patternBuf, int bufLen, VECT_INT* result)
@@ -605,7 +618,7 @@ bool SuffixTree::findIdxBuf(UINT8* patternBuf, int bufLen, VECT_INT* result)
         result->clear();
         if (matchResult)
         {
-            getLeafIndex(nodePtr, result);
+            getLeafIndex(nodePtr, (Idx - tmpVal), result);
         }
     } while (false);
 
@@ -770,7 +783,9 @@ void SuffixTree::build()
     }
 
     //finally walk the tree again and set up the index.
+#if VALIDATE_CHECK == 1
     setIndexUsingDfs(root, inputExtLen);
+#endif
 }
 
 void SuffixTree::startPhase(int i)
