@@ -650,8 +650,8 @@ size_t ProcFileOp(ListClearParam* lcParam)
         WSPrint(L"  DelFile           [%8d]\n", fileOpExtParam.szDelFileCount);
         
         WSPrint(L"\nSystem Error Report:\n");
-        WSPrint(L"  Detected system copy file error             [%d]\n", fileOpExtParam.szSysCpyFileErr);
-        WSPrint(L"  Detected system Read file error(GetFileBuf) [%d]\n", fileOpExtParam.szReadFileErr);
+        WSPrint(L"  Detected system copy file error             [%3d]\n", fileOpExtParam.szSysCpyFileErr);
+        WSPrint(L"  Detected system Read file error(GetFileBuf) [%3d]\n", fileOpExtParam.szReadFileErr);
 
     } while (FALSE);
 
