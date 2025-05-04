@@ -222,12 +222,13 @@ size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t mult
             {
                 extParam->MatchCount++;
                 WSPrint(L"  [Match]\n");
+                WSPrint(L"  %s\n  %s\n", destFile, srcFile);
             }
             else
             {
-                WSPrint(L"  [Diff]\n");
-            }
-            WSPrint(L"  %s\n  %s\n", destFile, srcFile);
+//                WSPrint(L"  [Diff]\n");
+//                WSPrint(L"  %s\n  %s\n", destFile, srcFile);
+            }            
             extParam->fileOpMutex2.unlock();
         }
 
