@@ -245,7 +245,7 @@ bool GetFileBuf(const wchar_t* FileName, BYTE** outFile, size_t* OutBufSize)
         if (INVALID_FILE_ATTRIBUTES == FileAttribute)
         {
             FileAttribute = GetLastError();
-            WSPrint(L"GetFileAttributes, GetLastError(%x) Failed - %s\n", FileAttribute, FileName);
+            WSPrint(L"GetFileBuf - GetFileAttributes (%x) Failed - %s\n", FileAttribute, FileName);
             bSuccess = false;
             break;
         }
@@ -253,7 +253,7 @@ bool GetFileBuf(const wchar_t* FileName, BYTE** outFile, size_t* OutBufSize)
         FileHandle = CreateFile(FileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
         if (NULL == FileHandle)
         {
-            WSPrint(L"FileHandle is Invalid parameter - %s\n", FileName);
+            WSPrint(L"GetFileBuf - FileHandle is Invalid parameter - %s\n", FileName);
             bSuccess = false;
             break;
         }
@@ -272,7 +272,7 @@ bool GetFileBuf(const wchar_t* FileName, BYTE** outFile, size_t* OutBufSize)
             if (FALSE == bSuccess || 0 == FileReadCount)
             {
                 bSuccess = false;
-                WSPrint(L"File read failed\n");
+                WSPrint(L"GetFileBuf - File read failed - %s\n", FileName);
                 break;
             }
         }

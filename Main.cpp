@@ -34,7 +34,8 @@ struct ListClearParam
     size_t          enumFileOp;
     bool            boolCmpUseThrd;
     bool            bAlgoEditDist;
-    ListClearParam() : MaxThread(0), DestDir(), SrcDir(), enumFileOp(0), cpyDir(), boolCmpUseThrd(true), bAlgoEditDist(false){}
+    ListClearParam() : MaxThread(0), DestDir(), SrcDir(), enumFileOp(0), cpyDir(), boolCmpUseThrd(true), \
+      bAlgoEditDist(false) {}
 };
 
 class EditSortStr
@@ -123,7 +124,12 @@ struct FileOpActExtParam
     size_t          destFileBufSize;
     std::mutex      fileOpMutex;
     std::mutex      fileOpMutex2;
-    FileOpActExtParam() :FileDeleted(NULL), ReadDestFileFailed(NULL), ReadSrcFileFailed(NULL), MatchCount(0), destFileBuf(NULL), destFileBufSize(0){}
+    size_t          szReadFileErr;
+    size_t          szDelFileCount;
+    size_t          szSysCpyFileErr;
+    size_t          szMatchCount;
+    FileOpActExtParam() :FileDeleted(NULL), ReadDestFileFailed(NULL), ReadSrcFileFailed(NULL), MatchCount(0), destFileBuf(NULL),\
+      destFileBufSize(0), szReadFileErr(0), szDelFileCount(0), szSysCpyFileErr(0), szMatchCount(0){}
 };
 size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t multiOp, FileOpActExtParam* extParam)
 {
@@ -196,6 +202,7 @@ size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t mult
                 {
                     if (extParam->ReadDestFileFailed)    *extParam->ReadDestFileFailed = true;
                     retVal = FileOpActEmnu::FileCmp;
+                    extParam->szReadFileErr++;
                     break;
                 }
             }
@@ -205,6 +212,7 @@ size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t mult
             {
                 if (extParam->ReadSrcFileFailed)    *extParam->ReadSrcFileFailed = true;
                 retVal = FileOpActEmnu::FileCmp;
+                extParam->szReadFileErr++;
                 break;
             }
 
@@ -243,6 +251,7 @@ size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t mult
             if (0 == SystemDelFile(destFile))
             {
                 // Success Delete file
+                extParam->szDelFileCount++;
             }
             else
             {
@@ -360,7 +369,11 @@ size_t ProcFileOp(ListClearParam* lcParam)
     do
     {
         GetSystemInfo(&SystemInfo);
-        lcParam->MaxThread = SystemInfo.dwNumberOfProcessors - 1;
+        if (SystemInfo.dwNumberOfProcessors - 1 > THRHD_MULTI_EDITDIST)
+        {
+            // For File Operation, we seems not need to set "SystemInfo.dwNumberOfProcessors - 1"
+            lcParam->MaxThread = THRHD_MULTI_EDITDIST;
+        }
 
         SortByWSDir.bAlgoEditDist = lcParam->bAlgoEditDist;
 
@@ -543,6 +556,7 @@ size_t ProcFileOp(ListClearParam* lcParam)
                 {
                     // GetFileBuf - Error
                     fileOpExtParam.MatchCount = -1;
+                    fileOpExtParam.szReadFileErr++;
                     bSkipFile = true;
                 }
             }
@@ -607,15 +621,38 @@ size_t ProcFileOp(ListClearParam* lcParam)
                     tmpWStr = lcParam->cpyDir + tmpWStr;
                     WSPrint(L"Copy [%s]\n", DestListFile[destFileIdx].c_str());
                     WSPrint(L"  To [%s]\n", tmpWStr.c_str());
-                    SystemCpyFile(tmpWStr.c_str(), DestListFile[destFileIdx].c_str());
+                    szTmpVal = SystemCpyFile(tmpWStr.c_str(), DestListFile[destFileIdx].c_str());
+                    if (szTmpVal)
+                    {
+                        fileOpExtParam.szSysCpyFileErr++;
+                    }
                 }
             }
+
+            if (fileOpExtParam.MatchCount)
+            {
+                fileOpExtParam.szMatchCount++;
+            }
+
         }
 
         if (lcParam->enumFileOp & FileOpActEmnu::RemoveEmptyDir)
         {
             RemoveEmptyFolder(lcParam->DestDir.c_str());
         }
+
+        // we still need to disply the error message, enable the ConOut
+        gWsPrint.DisConOutSilent();
+        WSPrint(L"\nSystem Report:\n"); 
+        WSPrint(L"  SrcFolder files   [%d] : [%s]\n", SrcListFile.size(), lcParam->SrcDir.c_str());
+        WSPrint(L"  DestFolder files  [%d] : [%s]\n\n", DestListFile.size(), lcParam->DestDir.c_str());
+        WSPrint(L"  Match             [%d]\n", fileOpExtParam.szMatchCount);
+        WSPrint(L"  DelFile           [%d]\n", fileOpExtParam.szDelFileCount);
+        
+        WSPrint(L"\nSystem Error Report:\n");
+        WSPrint(L"  Detected system copy file error             [%d]\n", fileOpExtParam.szSysCpyFileErr);
+        WSPrint(L"  Detected system Read file error(GetFileBuf) [%d]\n", fileOpExtParam.szReadFileErr);
+
     } while (FALSE);
 
     return szRetValue;
@@ -776,7 +813,7 @@ int wmain(int argc, wchar_t* argv[], wchar_t* envp[])
 
         if (ExeAct == ParamAct::None)
         {
-            WTmpStr =  L" ListDup.exe <parameters>          VER(1.16)\n";
+            WTmpStr =  L" ListDup.exe <parameters>          VER(1.17)\n";
             WTmpStr += L"  -d   <Directory>     : Set (Dest) Directory\n";
             WTmpStr += L"  -src <Directory>     : Set (Src) Directory\n";
             WTmpStr += L"  -listClear           : Proc ListClear Action\n";
