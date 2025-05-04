@@ -644,10 +644,10 @@ size_t ProcFileOp(ListClearParam* lcParam)
         // we still need to disply the error message, enable the ConOut
         gWsPrint.DisConOutSilent();
         WSPrint(L"\nSystem Report:\n"); 
-        WSPrint(L"  SrcFolder files   [%d] : [%s]\n", SrcListFile.size(), lcParam->SrcDir.c_str());
-        WSPrint(L"  DestFolder files  [%d] : [%s]\n\n", DestListFile.size(), lcParam->DestDir.c_str());
-        WSPrint(L"  Match             [%d]\n", fileOpExtParam.szMatchCount);
-        WSPrint(L"  DelFile           [%d]\n", fileOpExtParam.szDelFileCount);
+        WSPrint(L"  SrcFolder files   [%8d] : [%s]\n", SrcListFile.size(), lcParam->SrcDir.c_str());
+        WSPrint(L"  DestFolder files  [%8d] : [%s]\n\n", DestListFile.size(), lcParam->DestDir.c_str());
+        WSPrint(L"  Match             [%8d]\n", fileOpExtParam.szMatchCount);
+        WSPrint(L"  DelFile           [%8d]\n", fileOpExtParam.szDelFileCount);
         
         WSPrint(L"\nSystem Error Report:\n");
         WSPrint(L"  Detected system copy file error             [%d]\n", fileOpExtParam.szSysCpyFileErr);
