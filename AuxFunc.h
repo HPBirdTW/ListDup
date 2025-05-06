@@ -32,6 +32,7 @@ class CLS_PRINT;
 extern CLS_PRINT    gWsPrint;
 
 int ListAllFileByAttribue(const wchar_t* CurDir, vector<wstring>* RetDispFileList, DWORD OrFileAttrMask, DWORD ExcludeFileAttrMask);
+bool GetFileHdl(const wchar_t* FileName, HANDLE* FileHandle, size_t* FileSize);
 bool GetFileBuf(const wchar_t* FileName, BYTE** outFile, size_t* outBufSize);
 size_t SystemDelEmptyDir(const wchar_t* Dest);
 size_t SystemCpyFile(const wchar_t* Dest, const wchar_t* Src);

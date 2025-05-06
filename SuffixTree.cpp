@@ -7,6 +7,10 @@ using namespace std;
 
 UINT8 SuffixTree::UNIQUE_CHAR = 0;
 
+// The newAlloc / delRqst golbal value that is for use Malloc() and Free(), that we should be the same.
+size_t newAlloc = 0;
+size_t delRqst = 0;
+
 
 End::End(int end)
 {
@@ -28,9 +32,26 @@ void* End::operator new(std::size_t count)
         throw std::bad_alloc{};
     }
 
+    newAlloc += count;
+
     return node;
 }
 
+void End::operator delete(void* ptr) noexcept
+{
+    delRqst += sizeof(End);
+
+    if (ptr)
+        std::free(ptr);
+}
+
+void End::operator delete(void* ptr, std::size_t size) noexcept
+{
+    delRqst += size;
+
+    if (ptr)
+        std::free(ptr);
+}
 
 End::End() : end(-1) 
 {
@@ -40,11 +61,14 @@ End::End() : end(-1)
 void* End::operator new[](std::size_t count)
 {
     SuffixNodePtr   node = NULL;
+
     node = (SuffixNodePtr)std::malloc(count);
     if (node == NULL)
     {
         throw std::bad_alloc{};
     }
+
+    newAlloc += count;
 
     return node;
 }
@@ -95,6 +119,16 @@ SuffixNodePtr SuffixNode::createNode(int start, EndPtr end)
 
 void SuffixNode::operator delete(void* ptr) noexcept
 {
+    delRqst += sizeof(SuffixNode);
+
+    if (ptr)
+        std::free(ptr);
+}
+
+void SuffixNode::operator delete(void* ptr, std::size_t size) noexcept
+{
+    delRqst += size;
+
     if (ptr)
         std::free(ptr);
 }
@@ -130,6 +164,8 @@ void* SuffixNode::operator new(std::size_t count)
 {
     SuffixNodePtr   node = NULL;
 
+    newAlloc += count;
+
     node = (SuffixNodePtr)std::malloc(count);
     if (node == NULL)
     {
@@ -142,6 +178,8 @@ void* SuffixNode::operator new(std::size_t count)
 void* SuffixNode::operator new[](std::size_t count)
 {
     SuffixNodePtr   node = NULL;
+
+    newAlloc += count;
 
     node = (SuffixNodePtr)std::malloc(count);
     if (node == NULL)
@@ -838,7 +876,7 @@ void SuffixTree::startPhase(int i)
                     root->child[SuffixNode::TOTAL - 1] = SuffixNode::createNode(i, &end);
 #endif
                 }
-                    
+
                 remainingSuffixCount--;
             }
         }
@@ -896,14 +934,14 @@ void SuffixTree::startPhase(int i)
                     }
                     else
                     {
-#if USE_SUFFIX_ARRAY == 0               
+#if USE_SUFFIX_ARRAY == 0
                         SuffixNode::SetChildNode(SuffixNode::TOTAL - 1, newLeafNode, &(newInternalNode->child));
 #else
                         newInternalNode->child[SuffixNode::TOTAL - 1] = newLeafNode;
 #endif
                     }
                     newInternalNode->index = INNER_NODE_INDEX;
-#if USE_SUFFIX_ARRAY == 0   
+#if USE_SUFFIX_ARRAY == 0
                     SuffixNode::SetChildNode(input[newInternalNode->start], newInternalNode, &(active.activeNode->child));
 #else
                     active.activeNode->child[input[newInternalNode->start]] = newInternalNode;
@@ -941,7 +979,7 @@ void SuffixTree::startPhase(int i)
                 SuffixNodePtr node = selectNode();
                 if (IsLastLeaf == false)
                 {
-#if USE_SUFFIX_ARRAY == 0  
+#if USE_SUFFIX_ARRAY == 0
                     SuffixNode::SetChildNode(input[i], SuffixNode::createNode(i, &this->end), &node->child);
 #else
                     node->child[input[i]] = SuffixNode::createNode(i, &this->end);
@@ -955,7 +993,7 @@ void SuffixTree::startPhase(int i)
                     node->child[SuffixNode::TOTAL - 1] = SuffixNode::createNode(i, &this->end);
 #endif
                 }
-                    
+
                 if (lastCreatedInternalNode != NULL)
                 {
                     lastCreatedInternalNode->suffixLink = node;
@@ -972,6 +1010,7 @@ void SuffixTree::startPhase(int i)
                     active.activeEdge = active.activeEdge + 1;
                     active.activeLength--;
                 }
+
                 remainingSuffixCount--;
             }
         }

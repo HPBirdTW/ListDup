@@ -24,17 +24,18 @@ std::wstring ConvertAnsiToWide(const char* ansiStr, int multyCount)
 
 CLS_PRINT:: ~CLS_PRINT()
 {
+    this->bTmrthrClose = true;
+    if (this->pTmrthr)
+    {
+      this->pTmrthr->join();
+    }
+
     if (this->pConOutFile)
     {
         this->Mutx.lock();
         fclose(this->pConOutFile);
+        this->pConOutFile = NULL;
         this->Mutx.unlock();
-    }
-    this->pConOutFile = NULL;
-    this->bTmrthrClose = true;
-    if (this->pTmrthr)
-    {
-        this->pTmrthr->join();
     }
 }
 
@@ -83,7 +84,7 @@ void CLS_PRINT::TmrthrFunc(CLS_PRINT* _this)
         {
             if(_this->Mutx.try_lock())
             {
-                fflush(_this->pConOutFile);
+//                fflush(_this->pConOutFile);
                 _this->Mutx.unlock();
             }
         }
@@ -104,8 +105,15 @@ int CLS_PRINT::outFileInit(const wchar_t* outFileName)
     if (pConOutFile)
     {
         fclose(pConOutFile);
+        pConOutFile = NULL;
     }
+#if true
     return _wfopen_s(&pConOutFile, outFileName, L"a+");
+#else
+    // using the share read file
+    pConOutFile = _wfsopen(outFileName, L"a+", _SH_DENYWR);
+    return (NULL == pConOutFile) ? 0 : 1;
+#endif
 }
 int CLS_PRINT::wsPrint(wchar_t const* const _Format, ...)
 {
@@ -226,6 +234,42 @@ int ListAllFileByAttribue(const wchar_t* _CurDir, vector<wstring>* RetDispFileLi
     delete[] tmpStrBuf;
 
     return RetValue;
+}
+
+bool GetFileHdl(const wchar_t* FileName, HANDLE* FileHandle, size_t* FileSize)
+{
+    BOOLEAN           bSuccess = false;
+    DWORD             FileAttribute = 0;
+    
+    do
+    {
+        bSuccess = true;
+        FileAttribute = GetFileAttributes(FileName);
+        if (INVALID_FILE_ATTRIBUTES == FileAttribute)
+        {
+          FileAttribute = GetLastError();
+          WSPrint(L"GetFileHdl - GetFileAttributes (%x) Failed - %s\n", FileAttribute, FileName);
+          bSuccess = false;
+          break;
+        }
+
+        *FileHandle = CreateFile(FileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (NULL == *FileHandle)
+        {
+            WSPrint(L"GetFileHandle - FileHandle is Invalid parameter - %s\n", FileName);
+            bSuccess = false;
+            break;
+        }
+
+        *FileSize = (size_t)GetFileSize(*FileHandle, NULL);
+        if (0 == *FileSize)
+        {
+            WSPrint(L"File is Empty\n");
+            break;
+        }
+    } while (FALSE);
+
+    return bSuccess;
 }
 
 bool GetFileBuf(const wchar_t* FileName, BYTE** outFile, size_t* OutBufSize)

@@ -34,6 +34,8 @@ public:
 
     End(int end);
     End(const End& obj);
+    static void operator delete(void* ptr) noexcept;
+    static void operator delete(void* ptr, std::size_t size) noexcept;
     static void* operator new(std::size_t count);
 };
 
@@ -63,7 +65,8 @@ public:
     static SuffixNodePtr GetChildNode(int index, VECT_CHILDNODE* child);
     static void SetChildNode(int index, SuffixNodePtr node, VECT_CHILDNODE* child);
 #endif
-    void operator delete(void* ptr) noexcept;
+    static void operator delete(void* ptr) noexcept;
+    static void operator delete(void* ptr, std::size_t size) noexcept;
 private:
     SuffixNode();
     SuffixNode(const SuffixNode& obj);
