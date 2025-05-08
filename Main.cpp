@@ -19,7 +19,8 @@ using namespace std;
 #define COMPARE_THREAD          1
 // Threshold for Starting enable multi-thread calcualte Editdistance
 // 0: Disable the Multi-thread CompareFunction
-#define THRHD_MULTI_EDITDIST    5
+#define THRHD_MULTI_EDITDIST    6
+#define MAX_FILE_COMPARE_THREAD 6   // 0: using the CPU system core count for file compare.
 #define READ_WHOLE_SRC_FILE     0
 
 bool    gAbortTerminal = false;
@@ -123,18 +124,20 @@ public:
 
 struct FileOpActExtParam
 {
-    volatile bool*  FileDeleted;
-    volatile bool*  ReadDestFileFailed;
-    volatile bool*  ReadSrcFileFailed;
-    volatile int    szTempCmpMatch;
-    BYTE*           destFileBuf;
-    size_t          destFileBufSize;
-    std::mutex      fileOpMutex;
-    std::mutex      fileOpMutex2;
-    size_t          szReadFileErr;
-    size_t          szDelFileCount;
-    size_t          szSysCpyFileErr;
-    size_t          szMatchCount;
+    volatile bool*          FileDeleted;
+    volatile bool*          ReadDestFileFailed;
+    volatile bool*          ReadSrcFileFailed;
+    volatile int            szTempCmpMatch;
+    BYTE*                   destFileBuf;
+    size_t                  destFileBufSize;
+    std::mutex              fileOpMutex;
+    std::mutex              fileOpMutex2;
+    std::mutex              finishListMutex;
+    size_t                  szReadFileErr;
+    size_t                  szDelFileCount;
+    size_t                  szSysCpyFileErr;
+    size_t                  szMatchCount;
+    vector<std::thread::id> vectFinishId;
     FileOpActExtParam() :FileDeleted(NULL), ReadDestFileFailed(NULL), ReadSrcFileFailed(NULL), szTempCmpMatch(0), destFileBuf(NULL),\
       destFileBufSize(0), szReadFileErr(0), szDelFileCount(0), szSysCpyFileErr(0), szMatchCount(0){}
 };
@@ -159,7 +162,7 @@ size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t mult
         {
             while (!extParam->fileOpMutex.try_lock())
             {
-                this_thread::sleep_for(chrono::milliseconds(5));
+                this_thread::sleep_for(chrono::milliseconds(1));
             }
 
             if (extParam->ReadDestFileFailed)
@@ -357,6 +360,10 @@ size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t mult
     if (srcFileBuf)
         delete[] srcFileBuf;
 
+    extParam->finishListMutex.lock();
+    extParam->vectFinishId.push_back(std::this_thread::get_id());
+    extParam->finishListMutex.unlock();
+
     return retVal;
 }
 
@@ -443,10 +450,14 @@ size_t ProcFileOp(ListClearParam* lcParam)
     do
     {
         GetSystemInfo(&SystemInfo);
-        if (SystemInfo.dwNumberOfProcessors - 1 > THRHD_MULTI_EDITDIST)
+        if (MAX_FILE_COMPARE_THREAD && (SystemInfo.dwNumberOfProcessors > MAX_FILE_COMPARE_THREAD))
         {
             // For File Operation, we seems not need to set "SystemInfo.dwNumberOfProcessors - 1"
-            lcParam->MaxThread = THRHD_MULTI_EDITDIST;
+            lcParam->MaxThread = MAX_FILE_COMPARE_THREAD;
+        }
+        else
+        {
+          lcParam->MaxThread = SystemInfo.dwNumberOfProcessors;
         }
 
         SortByWSDir.bAlgoEditDist = lcParam->bAlgoEditDist;
@@ -566,11 +577,17 @@ size_t ProcFileOp(ListClearParam* lcParam)
 #if COMPARE_THREAD
             if (true == lcParam->boolCmpUseThrd)
             {
-                if (THRHD_MULTI_EDITDIST && (SortListFile.size() > THRHD_MULTI_EDITDIST))
+                if (THRHD_MULTI_EDITDIST && SortListFile.size() )
                 {
                     for (szIdx2=0; szIdx2 < SortListFile.size(); szIdx2++)
                     {
                         thrdEditFunc.push_back(std::thread(csSortByWSDir::CalcEditDist, &SortByWSDir, &(SortListFile[szIdx2])) );
+                        if (thrdEditFunc.size() > THRHD_MULTI_EDITDIST)
+                        {
+                            _pThread = thrdEditFunc.begin();
+                            _pThread->join();
+                            thrdEditFunc.erase(_pThread);
+                        }
                     }
                     if (thrdEditFunc.size())
                     {
@@ -619,6 +636,7 @@ size_t ProcFileOp(ListClearParam* lcParam)
             fileOpExtParam.szTempCmpMatch = 0;
             fileOpExtParam.destFileBuf = NULL;
             fileOpExtParam.destFileBufSize = 0;
+            fileOpExtParam.vectFinishId.clear();
             if (FindListFile.size())
             {
                 if (false == GetFileBuf(DestListFile[destFileIdx].c_str(), &(fileOpExtParam.destFileBuf), &(fileOpExtParam.destFileBufSize)))
@@ -631,20 +649,47 @@ size_t ProcFileOp(ListClearParam* lcParam)
             for (szIdx2 = 0; szIdx2 < FindListFile.size() && (bSkipFile == false) && (false == gAbortTerminal); ++szIdx2)
             {
 #if COMPARE_THREAD
-                // Using the 0 == szIdx2, because the first might will be the nearest edit distance.
-                //   with direct calling will be fast than thread compare
-                if ((0 == szIdx2) || (false == lcParam->boolCmpUseThrd))
+                if ((false == lcParam->boolCmpUseThrd))
                 {
                     FileOpAction(DestListFile[destFileIdx].c_str(), FindListFile[szIdx2].c_str(), lcParam->enumFileOp, &fileOpExtParam);
                 }
                 else
                 {
                     threads.push_back(std::thread(FileOpAction, DestListFile[destFileIdx].c_str(), FindListFile[szIdx2].c_str(), lcParam->enumFileOp, &fileOpExtParam));
-                    if (lcParam->MaxThread == threads.size())
+
+                    if (0 == szIdx2)
                     {
+                        // Using the 0 == szIdx2, because the first might will be the nearest edit distance.
+                        //   with direct calling will be fast than thread compare
                         _pThread = threads.begin();
-                        _pThread->join();
-                        threads.erase(_pThread);
+                        szIdx2 = 500;     // Wait 500 ms for the first compare
+                        while (szIdx2-- && 0 == fileOpExtParam.vectFinishId.size())
+                        {
+                            this_thread::sleep_for(chrono::milliseconds(1));
+                        }
+                        szIdx2 = 0;
+                        // Here, we no need to join() release the first thread, because, it will be releaes by follow for loop
+                    }
+                    for (_pThread = threads.begin(); lcParam->MaxThread == threads.size(); ++_pThread)
+                    {
+                        if (_pThread == threads.end())
+                        {
+                            _pThread = threads.begin();
+                        }
+
+                        if (fileOpExtParam.vectFinishId.size())
+                        {
+                          if (_pThread->get_id () == fileOpExtParam.vectFinishId[0])
+                          {
+                            _pThread->join();
+                            threads.erase(_pThread);
+                            fileOpExtParam.finishListMutex.lock();
+                            fileOpExtParam.vectFinishId.erase (fileOpExtParam.vectFinishId.begin());
+                            fileOpExtParam.finishListMutex.unlock();
+                            break;
+                          }
+                        }
+                        this_thread::sleep_for(chrono::milliseconds(1));
                     }
                 }
                 continue;
@@ -744,6 +789,7 @@ size_t ProcFileOp(ListClearParam* lcParam)
         WSPrint(L"\n  suffixTree, newAlloc [%10d], delRqst [%10d]\n", newAlloc, delRqst);
     }
 
+    WSPrint(L"\n[EXIT. (You might wait some time for kernel memroy garbage collection]\n");
 
     return szRetValue;
 }
@@ -923,7 +969,7 @@ int wmain(int argc, wchar_t* argv[], wchar_t* envp[])
 
         if (ExeAct == ParamAct::None)
         {
-            WTmpStr =  L" ListDup.exe <parameters>          VER(1.18)\n";
+            WTmpStr =  L" ListDup.exe <parameters>          VER(1.19)\n";
             WTmpStr += L"  -d   <Directory>     : Set (Dest) Directory\n";
             WTmpStr += L"  -src <Directory>     : Set (Src) Directory\n";
             WTmpStr += L"  -listClear           : Proc ListClear Action\n";
