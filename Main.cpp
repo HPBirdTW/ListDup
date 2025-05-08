@@ -20,7 +20,7 @@ using namespace std;
 // Threshold for Starting enable multi-thread calcualte Editdistance
 // 0: Disable the Multi-thread CompareFunction
 #define THRHD_MULTI_EDITDIST    6
-#define MAX_FILE_COMPARE_THREAD 6   // 0: using the CPU system core count for file compare.
+#define MAX_FILE_COMPARE_THREAD 5   // 0: using the CPU system core count for file compare. actually too much file systme access is not fast
 #define READ_WHOLE_SRC_FILE     0
 
 bool    gAbortTerminal = false;
@@ -173,14 +173,6 @@ size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t mult
                     break;
                 }
             }
-            if (extParam->ReadSrcFileFailed)
-            {
-                if (true == *extParam->ReadSrcFileFailed)
-                {
-                    extParam->fileOpMutex.unlock();
-                    break;
-                }
-            }
 
 
             if (multiOp & FileOpActEmnu::FileCmpDel)
@@ -215,9 +207,11 @@ size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t mult
                 bFileCmpRst = GetFileBuf(destFile, &destFileBuf, &destFileBufSize);
                 if (bFileCmpRst == false)
                 {
+                    extParam->fileOpMutex.lock();
                     if (extParam->ReadDestFileFailed)    *extParam->ReadDestFileFailed = true;
                     retVal = FileOpActEmnu::FileCmp;
                     extParam->szReadFileErr++;
+                    extParam->fileOpMutex.unlock();
                     break;
                 }
             }
@@ -225,9 +219,11 @@ size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t mult
             bFileCmpRst = GetFileBuf(srcFile, &srcFileBuf , &srcFileBufSize);
             if (bFileCmpRst == false)
             {
+                extParam->fileOpMutex.lock();
                 if (extParam->ReadSrcFileFailed)    *(extParam->ReadSrcFileFailed) = true;
                 retVal = FileOpActEmnu::FileCmp;
                 extParam->szReadFileErr++;
+                extParam->fileOpMutex.unlock();
                 break;
             }
 
@@ -243,9 +239,11 @@ size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t mult
             bFileCmpRst = GetFileHdl(srcFile, &srcFileHandle, &srcFileBufSize);
             if (bFileCmpRst == false)
             {
+                extParam->fileOpMutex.lock();
                 if (extParam->ReadSrcFileFailed)    *(extParam->ReadSrcFileFailed) = true;
                 retVal = FileOpActEmnu::FileCmp;
                 extParam->szReadFileErr++;
+                extParam->fileOpMutex.unlock();
                 break;
             }
 
@@ -273,10 +271,12 @@ size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t mult
                     bFileCmpRst = ReadFile(srcFileHandle, (LPVOID)srcFileBuf, (DWORD)szTmpVal, (LPDWORD)&szTmpVal, NULL);
                     if (bFileCmpRst == false)
                     {
+                        extParam->fileOpMutex.lock();
                         WSPrint(L"ReadFile - Failed - %s\n", srcFile);
                         if (extParam->ReadSrcFileFailed)    *extParam->ReadSrcFileFailed = true;
                         retVal = FileOpActEmnu::FileCmp;
                         extParam->szReadFileErr++;
+                        extParam->fileOpMutex.unlock();
                         break;
                     }
 
@@ -335,7 +335,9 @@ size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t mult
                 retVal = FileOpActEmnu::FileCmpDel;
             }
 
+            extParam->fileOpMutex.lock();
             if (extParam->FileDeleted)    *extParam->FileDeleted = true;
+            extParam->fileOpMutex.unlock();
         }
     } while (false);
 
@@ -512,7 +514,12 @@ size_t ProcFileOp(ListClearParam* lcParam)
 
         fileOpExtParam.FileDeleted = &bSkipFile;
         fileOpExtParam.ReadDestFileFailed = &bSkipFile;
-        fileOpExtParam.ReadSrcFileFailed = &bSkipFile;
+        if (false)
+        {
+            // We don't need to check the source read fail. because it should be treat as not match
+            fileOpExtParam.ReadSrcFileFailed = &bSkipFile;
+        }
+        
 
         if (lcParam->enumFileOp & FileOpActEmnu::SilentMode)
         {
@@ -675,21 +682,21 @@ size_t ProcFileOp(ListClearParam* lcParam)
                         if (_pThread == threads.end())
                         {
                             _pThread = threads.begin();
+                            this_thread::sleep_for(chrono::milliseconds(1));
                         }
 
                         if (fileOpExtParam.vectFinishId.size())
                         {
-                          if (_pThread->get_id () == fileOpExtParam.vectFinishId[0])
-                          {
-                            _pThread->join();
-                            threads.erase(_pThread);
-                            fileOpExtParam.finishListMutex.lock();
-                            fileOpExtParam.vectFinishId.erase (fileOpExtParam.vectFinishId.begin());
-                            fileOpExtParam.finishListMutex.unlock();
-                            break;
-                          }
+                            if (_pThread->get_id () == fileOpExtParam.vectFinishId[0])
+                            {
+                                _pThread->join();
+                                threads.erase(_pThread);
+                                fileOpExtParam.finishListMutex.lock();
+                                fileOpExtParam.vectFinishId.erase (fileOpExtParam.vectFinishId.begin());
+                                fileOpExtParam.finishListMutex.unlock();
+                                break;
+                            }
                         }
-                        this_thread::sleep_for(chrono::milliseconds(1));
                     }
                 }
                 continue;
@@ -815,7 +822,7 @@ wstring CovFullPath(const wchar_t *sPath)
 
 void SignalHandler(int signal)
 {
-    size_t          szTimeOut = 60 * 1000;   // 60 sec.
+    size_t          szTimeOut = 5 * 1000;   // 5 sec.
     const size_t    DURATION = 10;
 
     gAbortTerminal = true;

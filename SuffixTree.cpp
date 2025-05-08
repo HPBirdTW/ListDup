@@ -619,7 +619,7 @@ void SuffixTree::getLeafIndex(SuffixNodePtr node, int rootLen, VECT_INT* result)
 bool SuffixTree::findIdxBuf(UINT8* patternBuf, int bufLen, VECT_INT* result)
 {
     int             Idx;
-    int             tmpVal;
+    int             tmpVal = 0;
     SuffixNodePtr   nodePtr = this->root;
     bool            matchResult = true;
     do
