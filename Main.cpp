@@ -264,6 +264,7 @@ size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t mult
                     if (extParam->szTempCmpMatch)
                     {
                         // Preivous find the match file.
+                        bFileCmpRst = false;
                         break;
                     }
 
@@ -309,10 +310,18 @@ size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t mult
                 WSPrint(L"  [Match]\n");
                 WSPrint(L"  %s\n  %s\n", destFile, srcFile);
             }
+            else if (extParam->szTempCmpMatch)
+            {
+                // We skip this file check, since it have find previous match.
+            }
             else
             {
-//                WSPrint(L"  [Diff]\n");
-//                WSPrint(L"  %s\n  %s\n", destFile, srcFile);
+                // Current, we did not list the diff file, it will cuase history log not easy read.
+                if (false)
+                {
+                  WSPrint(L"  [Diff]\n");
+                  WSPrint(L"  %s\n  %s\n", destFile, srcFile);
+                }
             }            
             extParam->fileOpMutex2.unlock();
         }
