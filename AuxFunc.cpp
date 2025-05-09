@@ -338,7 +338,7 @@ bool GetFileBuf(const wchar_t* FileName, BYTE** outFile, size_t* OutBufSize)
 
     if (OutBufSize)
     {
-        *OutBufSize = FileSize;
+        *OutBufSize = FileReadCount;
     }
     if (outFile)
     {

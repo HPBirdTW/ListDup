@@ -21,7 +21,7 @@ using namespace std;
 // 0: Disable the Multi-thread CompareFunction
 #define THRHD_MULTI_EDITDIST    6
 #define MAX_FILE_COMPARE_THREAD 5   // 0: using the CPU system core count for file compare. actually too much file systme access is not fast
-#define READ_WHOLE_SRC_FILE     0
+
 
 bool    gAbortTerminal = false;
 
@@ -136,10 +136,12 @@ struct FileOpActExtParam
     size_t                  szReadFileErr;
     size_t                  szDelFileCount;
     size_t                  szSysCpyFileErr;
+    size_t                  szSysDiffFile;
     size_t                  szMatchCount;
+    size_t                  szCurProcessCount;
     vector<std::thread::id> vectFinishId;
     FileOpActExtParam() :FileDeleted(NULL), ReadDestFileFailed(NULL), ReadSrcFileFailed(NULL), szTempCmpMatch(0), destFileBuf(NULL),\
-      destFileBufSize(0), szReadFileErr(0), szDelFileCount(0), szSysCpyFileErr(0), szMatchCount(0){}
+      destFileBufSize(0), szReadFileErr(0), szDelFileCount(0), szSysCpyFileErr(0), szMatchCount(0), szSysDiffFile(0), szCurProcessCount(0){}
 };
 size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t multiOp, FileOpActExtParam* extParam)
 {
@@ -150,11 +152,10 @@ size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t mult
     size_t              destFileBufSize = 0;
     BYTE*               srcFileBuf = NULL;
     size_t              srcFileBufSize = 0;
-#if READ_WHOLE_SRC_FILE == 0
-    const size_t        CONST_READ_SIZE = 0x100000;      // 1MB
+    const size_t        CONST_READ_SIZE = 0x40000;      // 256KB
     HANDLE              srcFileHandle = NULL;
+    HANDLE              destFileHandle = NULL;
     size_t              szIdx;
-#endif
 
     do
     {
@@ -173,7 +174,6 @@ size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t mult
                     break;
                 }
             }
-
 
             if (multiOp & FileOpActEmnu::FileCmpDel)
             {
@@ -204,42 +204,26 @@ size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t mult
             }
             else
             {
-                bFileCmpRst = GetFileBuf(destFile, &destFileBuf, &destFileBufSize);
+                bFileCmpRst = GetFileHdl(destFile, &destFileHandle, &destFileBufSize);
                 if (bFileCmpRst == false)
                 {
                     extParam->fileOpMutex.lock();
+                    WSPrint(L"ReadFile - Failed - %s\n", destFile);
                     if (extParam->ReadDestFileFailed)    *extParam->ReadDestFileFailed = true;
                     retVal = FileOpActEmnu::FileCmp;
                     extParam->szReadFileErr++;
                     extParam->fileOpMutex.unlock();
                     break;
                 }
-            }
-#if READ_WHOLE_SRC_FILE
-            bFileCmpRst = GetFileBuf(srcFile, &srcFileBuf , &srcFileBufSize);
-            if (bFileCmpRst == false)
-            {
-                extParam->fileOpMutex.lock();
-                if (extParam->ReadSrcFileFailed)    *(extParam->ReadSrcFileFailed) = true;
-                retVal = FileOpActEmnu::FileCmp;
-                extParam->szReadFileErr++;
-                extParam->fileOpMutex.unlock();
-                break;
+
+                destFileBuf = new UINT8[CONST_READ_SIZE];
             }
 
-            bFileCmpRst = false;
-            if (destFileBufSize == srcFileBufSize)
-            {
-                if (0 == memcmp(destFileBuf, srcFileBuf, destFileBufSize))
-                {
-                    bFileCmpRst = true;
-                }
-            }
-#else       
             bFileCmpRst = GetFileHdl(srcFile, &srcFileHandle, &srcFileBufSize);
             if (bFileCmpRst == false)
             {
                 extParam->fileOpMutex.lock();
+                WSPrint(L"ReadFile - Failed - %s\n", srcFile);
                 if (extParam->ReadSrcFileFailed)    *(extParam->ReadSrcFileFailed) = true;
                 retVal = FileOpActEmnu::FileCmp;
                 extParam->szReadFileErr++;
@@ -261,11 +245,14 @@ size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t mult
 
                 for (szIdx = 0; szIdx < srcFileBufSize; szIdx += szTmpVal)
                 {
-                    if (extParam->szTempCmpMatch)
+                    if (0 == (multiOp & FileOpActEmnu::FileListAllRst))
                     {
-                        // Preivous find the match file.
-                        bFileCmpRst = false;
-                        break;
+                        if (extParam->szTempCmpMatch)
+                        {
+                            // Preivous find the match file.
+                            bFileCmpRst = false;
+                            break;
+                        }
                     }
 
                     szTmpVal = CONST_READ_SIZE;
@@ -280,28 +267,54 @@ size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t mult
                         extParam->fileOpMutex.unlock();
                         break;
                     }
+                    if (NULL == extParam->destFileBuf)
+                    {
+                        bFileCmpRst = ReadFile(destFileHandle, (LPVOID)destFileBuf, (DWORD)szTmpVal, (LPDWORD)&szTmpVal, NULL);
+                        if (bFileCmpRst == false)
+                        {
+                            extParam->fileOpMutex.lock();
+                            WSPrint(L"ReadFile - Failed - %s\n", destFile);
+                            if (extParam->ReadDestFileFailed)    *extParam->ReadDestFileFailed = true;
+                            retVal = FileOpActEmnu::FileCmp;
+                            extParam->szReadFileErr++;
+                            extParam->fileOpMutex.unlock();
+                            break;
+                        }
+                    }
 
                     bFileCmpRst = false;
-                    if (0 == memcmp(destFileBuf + szIdx, srcFileBuf, szTmpVal))
+                    if (extParam->destFileBuf)
                     {
-                        bFileCmpRst = true;
+                        if (0 == memcmp(destFileBuf + szIdx, srcFileBuf, szTmpVal))
+                        {
+                            bFileCmpRst = true;
+                        }
+                        else
+                        {
+                            break;
+                        }
                     }
                     else
                     {
-                      break;
+                        if (0 == memcmp(destFileBuf, srcFileBuf, szTmpVal))
+                        {
+                            bFileCmpRst = true;
+                        }
+                        else
+                        {
+                            break;
+                        }
                     }
+
                 }
                 // End Read File sequence
             }
 
-            CloseHandle(srcFileHandle);
-            srcFileHandle = NULL;
             // Check the for loop error
             if (retVal)
             {
                 break;
             }
-#endif
 
             extParam->fileOpMutex2.lock();
             if (bFileCmpRst)
@@ -310,14 +323,10 @@ size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t mult
                 WSPrint(L"  [Match]\n");
                 WSPrint(L"  %s\n  %s\n", destFile, srcFile);
             }
-            else if (extParam->szTempCmpMatch)
-            {
-                // We skip this file check, since it have find previous match.
-            }
             else
             {
                 // Current, we did not list the diff file, it will cuase history log not easy read.
-                if (false)
+                if ( multiOp & FileOpActEmnu::FileListAllRst )
                 {
                   WSPrint(L"  [Diff]\n");
                   WSPrint(L"  %s\n  %s\n", destFile, srcFile);
@@ -363,6 +372,18 @@ size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t mult
     }
 
     // Free Rsource
+    if (srcFileHandle)
+    {
+        CloseHandle(srcFileHandle);
+    }
+    srcFileHandle = NULL;
+
+    if (destFileHandle)
+    {
+        CloseHandle(destFileHandle);
+    }
+    destFileHandle = NULL;
+
     if (NULL == extParam->destFileBuf)
     {
         if (destFileBuf)
@@ -435,12 +456,13 @@ size_t ProcFileOp(ListClearParam* lcParam)
 {
     std::vector<wstring>        DestListFile;
     std::vector<wstring>        SrcListFile;
+    std::vector<wstring>::iterator  iterSrcFile;
+    std::vector<wstring>::iterator  iterDestFile;
     std::vector<wstring>        FindListFile;
     std::vector<EditSortStr>    SortListFile;
     std::wstring                tmpWStr;
     std::wstring                ShortFileWStr;
     size_t                      szTmpVal;
-    size_t                      destFileIdx;
     size_t                      szIdx2;
     size_t                      szRetValue = 0;
     int                         tmpVal;
@@ -456,6 +478,8 @@ size_t ProcFileOp(ListClearParam* lcParam)
 #endif
     csSortByWSDir               SortByWSDir;
     SYSTEM_INFO                 SystemInfo;
+    HANDLE                      destFileHandle = NULL;
+    CONST size_t                MAX_DEST_FILE_SIZE = 32 * 0x100000;   // 32 MB
 
     //WSPrint(L"[%d]: %s\n", __LINE__, __FUNCTIONW__);
     do
@@ -509,9 +533,9 @@ size_t ProcFileOp(ListClearParam* lcParam)
         }
 
         tmpWStr.clear();
-        for (szIdx2 = 0; szIdx2 < SrcListFile.size(); ++szIdx2)
+        for (iterSrcFile = SrcListFile.begin(); iterSrcFile != SrcListFile.end(); ++iterSrcFile)
         {
-            tmpWStr += SrcListFile[szIdx2].c_str();
+            tmpWStr += iterSrcFile->c_str();
             tmpWStr += END_CHAR;
         }
 
@@ -535,20 +559,22 @@ size_t ProcFileOp(ListClearParam* lcParam)
             gWsPrint.EnConOutSilent();
         }
 
-        for (destFileIdx = 0; destFileIdx < DestListFile.size() && false == gAbortTerminal; ++destFileIdx)
+        for (iterDestFile = DestListFile.begin(); iterDestFile != DestListFile.end() && false == gAbortTerminal; ++iterDestFile)
         {
             if (lcParam->enumFileOp & FileOpActEmnu::SilentMode)
             {
                 gWsPrint.DisConOutSilent();
             }
-            WSPrint(L"\n[%s]\n", DestListFile[destFileIdx].c_str());
+            WSPrint(L"\n[%s]\n", iterDestFile->c_str());
             if (lcParam->enumFileOp & FileOpActEmnu::SilentMode)
             {
                 gWsPrint.EnConOutSilent();
             }
 
-            ShortFileWStr = DestListFile[destFileIdx];
-            ShortFileWStr = ShortFileWStr.substr(ShortFileWStr.find_last_of(L"\\/") + 1);
+            fileOpExtParam.szCurProcessCount++;
+
+            ShortFileWStr = *iterDestFile;
+            ShortFileWStr = ShortFileWStr.substr(ShortFileWStr.find_last_of(L"\\/"));
 
             SMD_TIME_START_TAG(FindSuffix);
             tmpWStr = ShortFileWStr + END_CHAR;
@@ -561,24 +587,15 @@ size_t ProcFileOp(ListClearParam* lcParam)
             SortListFile.clear();
             tmpVal = 0;
             szTmpVal = 0;
-            for (szIdx2 = 0; szIdx2 < SearchResult.size(); ++szIdx2)
+            iterSrcFile = SrcListFile.begin();
+            for (auto SrhRstobj : SearchResult)
             {
-                for (; szTmpVal < SrcListFile.size(); ++szTmpVal)
+                for (; iterSrcFile != SrcListFile.end(); ++iterSrcFile)
                 {
-                    tmpVal += (int)((SrcListFile[szTmpVal].size() + wcslen(END_CHAR)) * sizeof(wchar_t));
-                    if (tmpVal > SearchResult[szIdx2])
+                    tmpVal += (int)((iterSrcFile->size() + wcslen(END_CHAR)) * sizeof(wchar_t));
+                    if (tmpVal > SrhRstobj)
                     {
-                        szTmpVal += 1;
-                        tmpWStr = SrcListFile[szTmpVal-1];
-                        tmpWStr = tmpWStr.substr(tmpWStr.find_last_of(L"\\/") + 1);
-
-                        if ((tmpWStr.size() != ShortFileWStr.size()) || lstrcmp(tmpWStr.c_str(), ShortFileWStr.c_str()))
-                        {
-                            //WSPrint(L"    Err.Find [%s]: %s\n", tmpWStr.c_str(), ShortFileWStr.c_str());
-                            break;
-                        }
-
-                        SortListFile.push_back(SrcListFile[szTmpVal-1]);
+                        SortListFile.push_back(*(iterSrcFile++));
                         break;
                     }
                 }
@@ -586,7 +603,7 @@ size_t ProcFileOp(ListClearParam* lcParam)
             SMD_TIME_END_TAG((L"GetMatchFile: "), GetFileList);
 
             SMD_TIME_START_TAG(EditCompare);
-            tmpWStr = DestListFile[destFileIdx];
+            tmpWStr = *iterDestFile;
             tmpWStr = tmpWStr.substr(tmpWStr.find(lcParam->DestDir.c_str()) + lcParam->DestDir.size());
             SortByWSDir.exptWStr = tmpWStr;
             SortByWSDir.cutOffDir = lcParam->SrcDir.c_str();
@@ -655,30 +672,50 @@ size_t ProcFileOp(ListClearParam* lcParam)
             fileOpExtParam.vectFinishId.clear();
             if (FindListFile.size())
             {
-                if (false == GetFileBuf(DestListFile[destFileIdx].c_str(), &(fileOpExtParam.destFileBuf), &(fileOpExtParam.destFileBufSize)))
+                if (false == GetFileHdl(iterDestFile->c_str(), &destFileHandle, &(fileOpExtParam.destFileBufSize)) )
                 {
                     // GetFileBuf - Error
                     fileOpExtParam.szReadFileErr++;
+                    WSPrint(L"ReadFile - Failed - %s\n", *iterDestFile);
                     *(fileOpExtParam.ReadDestFileFailed) = true;
                 }
+                else
+                {
+                    CloseHandle(destFileHandle);
+                    destFileHandle = NULL;
+                    if (fileOpExtParam.destFileBufSize < MAX_DEST_FILE_SIZE)
+                    {
+                        if (false == GetFileBuf(iterDestFile->c_str(), &(fileOpExtParam.destFileBuf), &(fileOpExtParam.destFileBufSize)))
+                        {
+                            // GetFileBuf - Error
+                            fileOpExtParam.szReadFileErr++;
+                            *(fileOpExtParam.ReadDestFileFailed) = true;
+                        }
+                    }
+                    else
+                    {
+                      fileOpExtParam.destFileBufSize = 0;
+                    }
+                }
+
             }
             for (szIdx2 = 0; szIdx2 < FindListFile.size() && (bSkipFile == false) && (false == gAbortTerminal); ++szIdx2)
             {
 #if COMPARE_THREAD
                 if ((false == lcParam->boolCmpUseThrd))
                 {
-                    FileOpAction(DestListFile[destFileIdx].c_str(), FindListFile[szIdx2].c_str(), lcParam->enumFileOp, &fileOpExtParam);
+                    FileOpAction(iterDestFile->c_str(), FindListFile[szIdx2].c_str(), lcParam->enumFileOp, &fileOpExtParam);
                 }
                 else
                 {
-                    threads.push_back(std::thread(FileOpAction, DestListFile[destFileIdx].c_str(), FindListFile[szIdx2].c_str(), lcParam->enumFileOp, &fileOpExtParam));
+                    threads.push_back(std::thread(FileOpAction, iterDestFile->c_str(), FindListFile[szIdx2].c_str(), lcParam->enumFileOp, &fileOpExtParam));
 
                     if (0 == szIdx2)
                     {
                         // Using the 0 == szIdx2, because the first might will be the nearest edit distance.
                         //   with direct calling will be fast than thread compare
                         _pThread = threads.begin();
-                        szIdx2 = 500;     // Wait 500 ms for the first compare
+                        szIdx2 = 5*1000;     // Wait 5*1000 ms for the first compare
                         while (szIdx2-- && 0 == fileOpExtParam.vectFinishId.size())
                         {
                             this_thread::sleep_for(chrono::milliseconds(1));
@@ -738,19 +775,19 @@ size_t ProcFileOp(ListClearParam* lcParam)
 
             if (0 == FindListFile.size())
             {
-                WSPrint(L"  - [NOT FOUND]\n");
+                WSPrint(L"  - [Not found in source folder]\n");
             }
 
-            if (lcParam->enumFileOp & FileOpActEmnu::FileDiffCpy)
+            if ((lcParam->enumFileOp & FileOpActEmnu::FileDiffCpy) && (false == *fileOpExtParam.ReadDestFileFailed) )
             {
                 if (0 == fileOpExtParam.szTempCmpMatch)
                 {
-                    tmpWStr = DestListFile[destFileIdx];
+                    tmpWStr = *iterDestFile;
                     tmpWStr = tmpWStr.substr(tmpWStr.find(lcParam->DestDir) + wcslen(lcParam->DestDir.c_str()));
                     tmpWStr = lcParam->cpyDir + tmpWStr;
-                    WSPrint(L"Copy [%s]\n", DestListFile[destFileIdx].c_str());
+                    WSPrint(L"Copy [%s]\n", iterDestFile->c_str());
                     WSPrint(L"  To [%s]\n", tmpWStr.c_str());
-                    szTmpVal = SystemCpyFile(tmpWStr.c_str(), DestListFile[destFileIdx].c_str());
+                    szTmpVal = SystemCpyFile(tmpWStr.c_str(), iterDestFile->c_str());
                     if (szTmpVal)
                     {
                         fileOpExtParam.szSysCpyFileErr++;
@@ -761,6 +798,10 @@ size_t ProcFileOp(ListClearParam* lcParam)
             if (fileOpExtParam.szTempCmpMatch)
             {
                 fileOpExtParam.szMatchCount++;
+            }
+            else
+            {
+                fileOpExtParam.szSysDiffFile++;
             }
 
         }
@@ -775,7 +816,9 @@ size_t ProcFileOp(ListClearParam* lcParam)
         WSPrint(L"\nSystem Report:\n");
         WSPrint(L"  SrcFolder files   [%8d] : [%s]\n", SrcListFile.size(), lcParam->SrcDir.c_str());
         WSPrint(L"  DestFolder files  [%8d] : [%s]\n\n", DestListFile.size(), lcParam->DestDir.c_str());
-        WSPrint(L"  Match             [%8d]\n", fileOpExtParam.szMatchCount);
+        WSPrint(L"  CurProc counts    [%8d]\n", fileOpExtParam.szCurProcessCount);
+        WSPrint(L"  Match             [%8d]\n", fileOpExtParam.szMatchCount); 
+        WSPrint(L"  Diff File         [%8d]\n", fileOpExtParam.szSysDiffFile);
         WSPrint(L"  DelFile           [%8d]\n", fileOpExtParam.szDelFileCount);
         
         WSPrint(L"\nSystem Error Report:\n");
@@ -985,7 +1028,7 @@ int wmain(int argc, wchar_t* argv[], wchar_t* envp[])
 
         if (ExeAct == ParamAct::None)
         {
-            WTmpStr =  L" ListDup.exe <parameters>          VER(1.19)\n";
+            WTmpStr =  L" ListDup.exe <parameters>          VER(1.20 beta)\n";
             WTmpStr += L"  -d   <Directory>     : Set (Dest) Directory\n";
             WTmpStr += L"  -src <Directory>     : Set (Src) Directory\n";
             WTmpStr += L"  -listClear           : Proc ListClear Action\n";
