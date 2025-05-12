@@ -67,6 +67,17 @@ public:
 
 };
 
+class CLS_FILE_ITER_IDX
+{
+  public:
+    std::vector<wstring>::iterator  pIter;
+    size_t                          szCurPost;
+    CLS_FILE_ITER_IDX(std::vector<wstring>::iterator _pIter, size_t _szPos) : pIter(_pIter), szCurPost(_szPos) {};
+
+  private:
+    CLS_FILE_ITER_IDX() : pIter(), szCurPost(0) {};
+};
+
 wstring GetSysLastErrString();
 std::wstring ConvertAnsiToWide(const char* ansiStr, int multyCount);
 std::string ConvertWideToANSI(const std::wstring& wstr);

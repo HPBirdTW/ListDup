@@ -152,7 +152,7 @@ size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t mult
     size_t              destFileBufSize = 0;
     BYTE*               srcFileBuf = NULL;
     size_t              srcFileBufSize = 0;
-    const size_t        CONST_READ_SIZE = 0x40000;      // 256KB
+    const size_t        CONST_READ_SIZE = 0x100000;       // 1 MB to get the best HD performance
     HANDLE              srcFileHandle = NULL;
     HANDLE              destFileHandle = NULL;
     size_t              szIdx;
@@ -456,10 +456,12 @@ size_t ProcFileOp(ListClearParam* lcParam)
 {
     std::vector<wstring>        DestListFile;
     std::vector<wstring>        SrcListFile;
-    std::vector<wstring>::iterator  iterSrcFile;
-    std::vector<wstring>::iterator  iterDestFile;
     std::vector<wstring>        FindListFile;
     std::vector<EditSortStr>    SortListFile;
+    std::vector<wstring>::iterator              iterSrcFile;
+    std::vector<wstring>::iterator              iterDestFile;
+    std::vector< CLS_FILE_ITER_IDX>             FastSrcPosList;
+    std::vector< CLS_FILE_ITER_IDX>::iterator   iterFastSrcPos;
     std::wstring                tmpWStr;
     std::wstring                ShortFileWStr;
     size_t                      szTmpVal;
@@ -480,6 +482,7 @@ size_t ProcFileOp(ListClearParam* lcParam)
     SYSTEM_INFO                 SystemInfo;
     HANDLE                      destFileHandle = NULL;
     CONST size_t                MAX_DEST_FILE_SIZE = 32 * 0x100000;   // 32 MB
+    CONST size_t                GROUP_FILE_LSIT_SIZE = 0x800;         // 2048 file be a group
 
     //WSPrint(L"[%d]: %s\n", __LINE__, __FUNCTIONW__);
     do
@@ -533,16 +536,27 @@ size_t ProcFileOp(ListClearParam* lcParam)
         }
 
         tmpWStr.clear();
+        szTmpVal = 0;
+        szIdx2 = 0;
+        FastSrcPosList.clear();
         for (iterSrcFile = SrcListFile.begin(); iterSrcFile != SrcListFile.end(); ++iterSrcFile)
         {
             tmpWStr += iterSrcFile->c_str();
             tmpWStr += END_CHAR;
+            
+            if (0 == (szIdx2 % GROUP_FILE_LSIT_SIZE))
+            {
+                FastSrcPosList.push_back (CLS_FILE_ITER_IDX (iterSrcFile, szTmpVal));
+            }
+            szTmpVal += (wcslen(iterSrcFile->c_str()) + wcslen(END_CHAR)) * sizeof (wchar_t);
+            ++szIdx2;
         }
 
         WSPrint(L"\n[Build] Suffix Tree : size(0x%08x)\n", (UINT)(tmpWStr.size() * sizeof(wchar_t)) );
         gWsPrint.EnWaitLongFunc();
         suffixTree.build((UINT8*)tmpWStr.c_str(), (int)(tmpWStr.size() * sizeof(wchar_t)));
         gWsPrint.DisWaitLongFunc();
+        tmpWStr.clear();
         WSPrint(L"\n  -- [Finish] Suffix Tree.\n");
 
         fileOpExtParam.FileDeleted = &bSkipFile;
@@ -588,8 +602,22 @@ size_t ProcFileOp(ListClearParam* lcParam)
             tmpVal = 0;
             szTmpVal = 0;
             iterSrcFile = SrcListFile.begin();
+            iterFastSrcPos = FastSrcPosList.begin();
+            
             for (auto SrhRstobj : SearchResult)
             {
+                if ((size_t)SrhRstobj > szTmpVal)
+                {
+                    do
+                    {
+                      iterFastSrcPos++;
+                    } while (iterFastSrcPos != FastSrcPosList.end() && iterFastSrcPos->szCurPost < (size_t)SrhRstobj);
+                    szTmpVal = (iterFastSrcPos == FastSrcPosList.end()) ? (MAXINT) : iterFastSrcPos->szCurPost;
+                    --iterFastSrcPos;
+
+                    tmpVal = (int)iterFastSrcPos->szCurPost;
+                    iterSrcFile = iterFastSrcPos->pIter;
+                }
                 for (; iterSrcFile != SrcListFile.end(); ++iterSrcFile)
                 {
                     tmpVal += (int)((iterSrcFile->size() + wcslen(END_CHAR)) * sizeof(wchar_t));
@@ -674,9 +702,9 @@ size_t ProcFileOp(ListClearParam* lcParam)
             {
                 if (false == GetFileHdl(iterDestFile->c_str(), &destFileHandle, &(fileOpExtParam.destFileBufSize)) )
                 {
-                    // GetFileBuf - Error
+                    // GetFileHdl - Error
                     fileOpExtParam.szReadFileErr++;
-                    WSPrint(L"ReadFile - Failed - %s\n", *iterDestFile);
+                    WSPrint(L"ReadFile - Failed - %s\n", iterDestFile->c_str());
                     *(fileOpExtParam.ReadDestFileFailed) = true;
                 }
                 else
@@ -822,8 +850,8 @@ size_t ProcFileOp(ListClearParam* lcParam)
         WSPrint(L"  DelFile           [%8d]\n", fileOpExtParam.szDelFileCount);
         
         WSPrint(L"\nSystem Error Report:\n");
-        WSPrint(L"  Detected (Fail on Copy) error               [%4d]\n", fileOpExtParam.szSysCpyFileErr);
-        WSPrint(L"  Detected system Read file error(GetFileBuf) [%4d]\n", fileOpExtParam.szReadFileErr);
+        WSPrint(L"  Detected (Fail on Copy) error                       [%4d]\n", fileOpExtParam.szSysCpyFileErr);
+        WSPrint(L"  Detected system Read file error(ReadFile - Failed)  [%4d]\n", fileOpExtParam.szReadFileErr);
 
     } while (FALSE);
 
@@ -1022,13 +1050,15 @@ int wmain(int argc, wchar_t* argv[], wchar_t* envp[])
             lcParam.boolCmpUseThrd = boolCmpUseThrd;
             lcParam.bAlgoEditDist = bAlgoEditDist;
             signal(SIGINT, SignalHandler);
+            SMD_TIME_START_TAG(ProcFileOpTime);
             ProcFileOp(&lcParam);
+            SMD_TIME_END_TAG((L"Total Process Time: "), ProcFileOpTime);
             gAbortTerminal = false;
         }
 
         if (ExeAct == ParamAct::None)
         {
-            WTmpStr =  L" ListDup.exe <parameters>          VER(1.20 beta)\n";
+            WTmpStr =  L" ListDup.exe <parameters>          VER(1.20)\n";
             WTmpStr += L"  -d   <Directory>     : Set (Dest) Directory\n";
             WTmpStr += L"  -src <Directory>     : Set (Src) Directory\n";
             WTmpStr += L"  -listClear           : Proc ListClear Action\n";

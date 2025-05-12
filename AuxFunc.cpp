@@ -240,6 +240,7 @@ bool GetFileHdl(const wchar_t* FileName, HANDLE* FileHandle, size_t* FileSize)
 {
     BOOLEAN           bSuccess = false;
     DWORD             FileAttribute = 0;
+    LARGE_INTEGER     largeSize;
     
     do
     {
@@ -261,11 +262,17 @@ bool GetFileHdl(const wchar_t* FileName, HANDLE* FileHandle, size_t* FileSize)
             break;
         }
 
-        *FileSize = (size_t)GetFileSize(*FileHandle, NULL);
-        if (0 == *FileSize)
+        bSuccess = GetFileSizeEx(*FileHandle, &largeSize);
+        if (false == bSuccess)
         {
             WSPrint(L"File is Empty\n");
+            *FileSize = 0;
+            bSuccess = true;
             break;
+        }
+        else
+        {
+            *FileSize = largeSize.QuadPart;
         }
     } while (FALSE);
 
@@ -274,13 +281,13 @@ bool GetFileHdl(const wchar_t* FileName, HANDLE* FileHandle, size_t* FileSize)
 
 bool GetFileBuf(const wchar_t* FileName, BYTE** outFile, size_t* OutBufSize)
 {
-    int         RetValue = 0;
-    HANDLE      FileHandle = NULL;
-    DWORD       FileSize;
-    BOOLEAN     bSuccess;
-    DWORD       FileReadCount = 0;
-    DWORD       FileAttribute = 0;
-    BYTE*       FileBuf = NULL;
+    int             RetValue = 0;
+    HANDLE          FileHandle = NULL;
+    size_t          szFileSize;
+    BOOLEAN         bSuccess;
+    DWORD           FileAttribute = 0;
+    BYTE*           FileBuf = NULL;
+    LARGE_INTEGER   largeSize;
 
     do
     {
@@ -302,18 +309,25 @@ bool GetFileBuf(const wchar_t* FileName, BYTE** outFile, size_t* OutBufSize)
             break;
         }
 
-        FileSize = GetFileSize(FileHandle, NULL);
-        if (0 == FileSize)
+        bSuccess = GetFileSizeEx(FileHandle, &largeSize);
+        if (false == bSuccess)
         {
             WSPrint(L"File is Empty\n");
+            szFileSize = 0;
+            bSuccess = true;
             //break;
         }
         else
         {
-            FileBuf = new UINT8[FileSize];
-            FileReadCount = 0;
-            bSuccess = ReadFile(FileHandle, FileBuf, (DWORD)FileSize, &FileReadCount, NULL);
-            if (FALSE == bSuccess || 0 == FileReadCount)
+            szFileSize = largeSize.QuadPart;
+            FileBuf = new UINT8[(szFileSize+0xFFF)&(~0xFFF)];
+            if (NULL == FileBuf)
+            {
+                bSuccess = false;
+                break;
+            }
+            bSuccess = ReadFile(FileHandle, FileBuf, (DWORD)szFileSize, (LPDWORD)&szFileSize, NULL);
+            if (FALSE == bSuccess)
             {
                 bSuccess = false;
                 WSPrint(L"GetFileBuf - File read failed - %s\n", FileName);
@@ -333,12 +347,12 @@ bool GetFileBuf(const wchar_t* FileName, BYTE** outFile, size_t* OutBufSize)
         if (FileBuf)
             delete[] FileBuf;
         FileBuf = NULL;
-        FileSize = 0;
+        szFileSize = 0;
     }
 
     if (OutBufSize)
     {
-        *OutBufSize = FileReadCount;
+        *OutBufSize = szFileSize;
     }
     if (outFile)
     {
