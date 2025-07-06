@@ -163,7 +163,7 @@ size_t FileOpAction(const wchar_t* destFile, const wchar_t* srcFile, size_t mult
         {
             while (!extParam->fileOpMutex.try_lock())
             {
-                this_thread::sleep_for(chrono::milliseconds(1));
+//                this_thread::sleep_for(chrono::milliseconds(1));
             }
 
             if (extParam->ReadDestFileFailed)
@@ -744,10 +744,13 @@ size_t ProcFileOp(ListClearParam* lcParam)
                         //   with direct calling will be fast than thread compare
                         _pThread = threads.begin();
                         szIdx2 = 5*1000;     // Wait 5*1000 ms for the first compare
-                        while (szIdx2-- && 0 == fileOpExtParam.vectFinishId.size())
+
+                        do
                         {
-                            this_thread::sleep_for(chrono::milliseconds(1));
-                        }
+                          fileOpExtParam.finishListMutex.lock();
+                          szTmpVal = fileOpExtParam.vectFinishId.size();
+                          fileOpExtParam.finishListMutex.unlock();
+                        } while (szIdx2-- && 0 == szTmpVal);
                         szIdx2 = 0;
                         // Here, we no need to join() release the first thread, because, it will be releaes by follow for loop
                     }
@@ -756,21 +759,21 @@ size_t ProcFileOp(ListClearParam* lcParam)
                         if (_pThread == threads.end())
                         {
                             _pThread = threads.begin();
-                            this_thread::sleep_for(chrono::milliseconds(1));
                         }
 
+                        fileOpExtParam.finishListMutex.lock();
                         if (fileOpExtParam.vectFinishId.size())
                         {
                             if (_pThread->get_id () == fileOpExtParam.vectFinishId[0])
                             {
                                 _pThread->join();
                                 threads.erase(_pThread);
-                                fileOpExtParam.finishListMutex.lock();
                                 fileOpExtParam.vectFinishId.erase (fileOpExtParam.vectFinishId.begin());
                                 fileOpExtParam.finishListMutex.unlock();
                                 break;
                             }
                         }
+                        fileOpExtParam.finishListMutex.unlock();
                     }
                 }
                 continue;
